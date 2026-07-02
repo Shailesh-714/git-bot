@@ -55,13 +55,15 @@ done
 
 download() {
   local url="$1"
-  local output="${2:-/dev/stdout}"
-  curl -fsSL \
-    --retry 3 \
-    --retry-delay 2 \
-    --retry-all-errors \
-    -H "User-Agent: ${APP}-installer" \
-    "$url" -o "$output"
+  local output="${2:-}"
+  local curl_flags=(-fsSL --retry 3 --retry-delay 2 --retry-all-errors)
+  curl_flags+=(-H "User-Agent: ${APP}-installer")
+
+  if [[ -n "$output" ]]; then
+    curl "${curl_flags[@]}" "$url" -o "$output"
+  else
+    curl "${curl_flags[@]}" "$url"
+  fi
 }
 
 # --- Detect OS / Arch --------------------------------------------------------
@@ -126,35 +128,33 @@ if [[ "$os" != "windows" && ! -x "$(command -v tar)" ]]; then
   exit 1
 fi
 
-# --- Resolve version / URL ---------------------------------------------------
+# --- Resolve URL (no GitHub API calls — avoids rate-limit 403s) --------------
 
+# When no version is specified, use the /releases/latest/download/ URL.
+# GitHub's web server resolves this to the latest release tag automatically,
+# without consuming an unauthenticated API request (limit: 60/hour/IP).
 if [[ -z "$requested_version" ]]; then
   url="https://github.com/$REPO/releases/latest/download/$filename"
-  api_url="https://api.github.com/repos/$REPO/releases/latest"
-  specific_version=$(download "$api_url" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
-  if [[ -z "$specific_version" ]]; then
-    echo "Error: Failed to fetch latest version information" >&2
-    echo "Try specifying a version explicitly:" >&2
-    echo "  curl -fsSL https://github.com/$REPO/releases/latest/download/install.sh | bash -s -- --version 0.1.1" >&2
-    exit 1
-  fi
+  version_label="latest"
 else
   requested_version="${requested_version#v}"
-  specific_version="$requested_version"
-  url="https://github.com/$REPO/releases/download/v${specific_version}/$filename"
+  version_label="v${requested_version}"
+  url="https://github.com/$REPO/releases/download/v${requested_version}/$filename"
 fi
 
 # --- Download and install ----------------------------------------------------
 
-echo "Installing $APP v$specific_version ($os/$arch)..."
+echo "Installing $APP ($version_label, $os/$arch)..."
 
 tmp_dir="${TMPDIR:-/tmp}/${APP}_install_$$"
 mkdir -p "$tmp_dir"
 trap 'rm -rf "$tmp_dir"' EXIT
 
 if ! download "$url" "$tmp_dir/$filename"; then
+  echo "" >&2
   echo "Error: Failed to download $url" >&2
-  echo "This may be a temporary network issue or rate-limit. Try again in a minute," >&2
+  echo "" >&2
+  echo "This may be a temporary network issue. Try again in a minute," >&2
   echo "or install via npm instead:  npm install -g @shailesh-714/git-bot" >&2
   exit 1
 fi
@@ -168,6 +168,20 @@ fi
 rm -rf "$INSTALL_DIR"
 mv "$tmp_dir/$APP" "$INSTALL_DIR"
 chmod +x "$INSTALL_DIR/bin/$APP"
+
+# Read the actual version from the extracted package.json (for display only)
+specific_version="unknown"
+if [[ -f "$INSTALL_DIR/package.json" ]]; then
+  specific_version=$(node -p 'require(require("path").join(process.argv[1], "package.json")).version' "$INSTALL_DIR" 2>/dev/null || echo "unknown")
+fi
+
+# --- Verify install ----------------------------------------------------------
+
+if ! "$INSTALL_DIR/bin/$APP" --version >/dev/null 2>&1; then
+  echo "Error: Installation verification failed." >&2
+  echo "The binary was installed but does not run correctly." >&2
+  exit 1
+fi
 
 # --- Update PATH -------------------------------------------------------------
 
@@ -191,7 +205,8 @@ add_to_path() {
 }
 
 if [[ "$no_modify_path" != "true" ]]; then
-  current_shell=$(basename "$SHELL")
+  current_shell="${SHELL:-sh}"
+  current_shell=$(basename "$current_shell" 2>/dev/null || echo "sh")
   config_file=""
 
   case "$current_shell" in
