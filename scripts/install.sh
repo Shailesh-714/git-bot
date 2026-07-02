@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP="git-bot"
-REPO="Shailesh-714/git-autocommiter"
+REPO="Shailesh-714/git-bot"
 INSTALL_DIR="$HOME/.$APP"
 
 usage() {

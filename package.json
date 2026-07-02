@@ -24,7 +24,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Shailesh-714/git-autocommiter.git"
+    "url": "git+https://github.com/Shailesh-714/git-bot.git"
   },
   "engines": {
     "node": ">=20"

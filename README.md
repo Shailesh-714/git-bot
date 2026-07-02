@@ -21,20 +21,20 @@ Requires **Node.js >= 20**.
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Shailesh-714/git-autocommiter/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Shailesh-714/git-bot/main/scripts/install.sh | bash
 ```
 
 Install a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Shailesh-714/git-autocommiter/main/scripts/install.sh | bash -s -- --version 0.1.0
+curl -fsSL https://raw.githubusercontent.com/Shailesh-714/git-bot/main/scripts/install.sh | bash -s -- --version 0.1.0
 ```
 
 After installing, start a new shell or run `source ~/.bashrc` / `source ~/.zshrc`.
 
 ### Windows
 
-Download the latest `git-bot-windows-x64.zip` from the [Releases page](https://github.com/Shailesh-714/git-autocommiter/releases), extract it, and add the `bin` folder to your PATH.
+Download the latest `git-bot-windows-x64.zip` from the [Releases page](https://github.com/Shailesh-714/git-bot/releases), extract it, and add the `bin` folder to your PATH.
 
 ### Manual
 
