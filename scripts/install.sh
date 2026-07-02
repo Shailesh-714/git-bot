@@ -17,8 +17,8 @@ Options:
       --no-modify-path    Do not modify shell config files
 
 Examples:
-  curl -fsSL https://raw.githubusercontent.com/$REPO/main/scripts/install.sh | bash
-  curl -fsSL https://raw.githubusercontent.com/$REPO/main/scripts/install.sh | bash -s -- --version 0.1.0
+  curl -fsSL https://github.com/$REPO/releases/latest/download/install.sh | bash
+  curl -fsSL https://github.com/$REPO/releases/latest/download/install.sh | bash -s -- --version 0.1.0
 EOF
 }
 
@@ -50,6 +50,20 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# --- Helpers -----------------------------------------------------------------
+
+download() {
+  local url="$1"
+  local output="${2:-/dev/stdout}"
+  # Retry on any error (including 403s/429s) with a short backoff.
+  curl -fsSL \
+    --retry 3 \
+    --retry-delay 2 \
+    --retry-all-errors \
+    -H "User-Agent: ${APP}-installer" \
+    "$url" -o "$output"
+}
 
 # --- Detect OS / Arch --------------------------------------------------------
 
@@ -121,9 +135,11 @@ fi
 if [[ -z "$requested_version" ]]; then
   url="https://github.com/$REPO/releases/latest/download/$filename"
   api_url="https://api.github.com/repos/$REPO/releases/latest"
-  specific_version=$(curl -fsSL "$api_url" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+  specific_version=$(download "$api_url" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
   if [[ -z "$specific_version" ]]; then
     echo "Error: Failed to fetch latest version information" >&2
+    echo "Try specifying a version explicitly:" >&2
+    echo "  curl -fsSL https://cdn.jsdelivr.net/gh/$REPO@main/scripts/install.sh | bash -s -- --version 0.1.0" >&2
     exit 1
   fi
 else
@@ -140,7 +156,12 @@ tmp_dir="${TMPDIR:-/tmp}/${APP}_install_$$"
 mkdir -p "$tmp_dir"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-curl -fsSL "$url" -o "$tmp_dir/$filename"
+if ! download "$url" "$tmp_dir/$filename"; then
+  echo "Error: Failed to download $url" >&2
+  echo "This is usually a temporary GitHub rate-limit. Wait a minute and try again," >&2
+  echo "or install a specific version with --version." >&2
+  exit 1
+fi
 
 if [[ "$ext" == "tar.gz" ]]; then
   tar -xzf "$tmp_dir/$filename" -C "$tmp_dir"

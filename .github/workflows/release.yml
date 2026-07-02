@@ -63,6 +63,7 @@ jobs:
           name: v${{ steps.version.outputs.version }}
           generate_release_notes: true
           files: |
+            scripts/install.sh
             git-bot-linux-x64.tar.gz
             git-bot-linux-arm64.tar.gz
             git-bot-darwin-x64.tar.gz
