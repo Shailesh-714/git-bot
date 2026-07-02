@@ -42,6 +42,23 @@ jobs:
           git tag "v${{ steps.version.outputs.version }}" || true
           git push origin "v${{ steps.version.outputs.version }}" || true
 
+      - name: Build release archives
+        run: |
+          sudo apt-get update && sudo apt-get install -y zip
+
+          mkdir -p release/git-bot/dist release/git-bot/bin
+          cp bundle/git-bot.cjs release/git-bot/dist/
+          cp package.json release/git-bot/
+
+          for platform in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+            cp scripts/git-bot release/git-bot/bin/git-bot
+            chmod +x release/git-bot/bin/git-bot
+            tar -czf "git-bot-${platform}.tar.gz" -C release git-bot
+          done
+
+          cp scripts/git-bot.cmd release/git-bot/bin/git-bot.cmd
+          (cd release && zip -rq ../git-bot-windows-x64.zip git-bot)
+
       - name: Publish to npm (trusted publishing via OIDC)
         run: npm publish
 
@@ -51,3 +68,10 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
           generate_release_notes: true
+          files: |
+            scripts/install.sh
+            git-bot-linux-x64.tar.gz
+            git-bot-linux-arm64.tar.gz
+            git-bot-darwin-x64.tar.gz
+            git-bot-darwin-arm64.tar.gz
+            git-bot-windows-x64.zip

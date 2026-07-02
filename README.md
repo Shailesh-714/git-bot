@@ -16,9 +16,11 @@ configurable conventions, and can also create a matching branch name when you st
 
 ## Installation
 
-Published to the public npm registry.
-
 Requires **Node.js >= 20**.
+
+### npm (recommended)
+
+Published to the public npm registry.
 
 ```bash
 npm install -g @shailesh-714/git-bot
@@ -28,6 +30,20 @@ Run without installing:
 
 ```bash
 npx @shailesh-714/git-bot commit --dry-run
+```
+
+### curl (GitHub Releases)
+
+Install the latest release directly from GitHub:
+
+```bash
+curl -fsSL https://github.com/Shailesh-714/git-bot/releases/latest/download/install.sh | bash
+```
+
+Install a specific version:
+
+```bash
+curl -fsSL https://github.com/Shailesh-714/git-bot/releases/latest/download/install.sh | bash -s -- --version 0.1.1
 ```
 
 ### Manual
