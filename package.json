@@ -3,6 +3,18 @@
   "version": "0.1.0",
   "description": "git-bot: an LLM-powered CLI assistant for conventional commits and branch names.",
   "type": "module",
+  "main": "bundle/git-bot.cjs",
+  "bin": {
+    "git-bot": "bundle/git-bot.cjs"
+  },
+  "files": [
+    "bundle"
+  ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "build:bundle": "node scripts/build.mjs",

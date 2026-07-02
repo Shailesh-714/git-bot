@@ -16,25 +16,19 @@ configurable conventions, and can also create a matching branch name when you st
 
 ## Installation
 
+Published to the public npm registry.
+
 Requires **Node.js >= 20**.
 
-### macOS / Linux
-
 ```bash
-curl -fsSL https://github.com/Shailesh-714/git-bot/releases/latest/download/install.sh | bash
+npm install -g @shailesh-714/git-bot
 ```
 
-Install a specific version:
+Run without installing:
 
 ```bash
-curl -fsSL https://github.com/Shailesh-714/git-bot/releases/latest/download/install.sh | bash -s -- --version 0.1.0
+npx @shailesh-714/git-bot commit --dry-run
 ```
-
-After installing, start a new shell or run `source ~/.bashrc` / `source ~/.zshrc`.
-
-### Windows
-
-Download the latest `git-bot-windows-x64.zip` from the [Releases page](https://github.com/Shailesh-714/git-bot/releases), extract it, and add the `bin` folder to your PATH.
 
 ### Manual
 
@@ -123,11 +117,25 @@ npm run build
 
 ## Releasing
 
+This project uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) via OIDC — no long-lived tokens required.
+
+### One-time setup
+
+1. Go to your package settings on [npmjs.com](https://www.npmjs.com).
+2. Find **Trusted Publisher** and select **GitHub Actions**.
+3. Fill in:
+   - **Organization/user:** `Shailesh-714`
+   - **Repository:** `git-bot`
+   - **Workflow filename:** `release.yml`
+   - **Allowed actions:** `npm publish`
+
+### Publishing
+
 1. Bump the version in `package.json`.
 2. Push the change to `main`.
 3. Go to **Actions → Release → Run workflow**.
 
-The workflow will tag the release, build and test the package, publish it to the GitHub Packages npm registry, and create a GitHub Release.
+The workflow will tag the release, build and test the package, publish it to the public npm registry with provenance, and create a GitHub Release.
 
 ## License
 
