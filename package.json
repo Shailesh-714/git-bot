@@ -3,16 +3,9 @@
   "version": "0.1.0",
   "description": "git-bot: an LLM-powered CLI assistant for conventional commits and branch names.",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "bin": {
-    "git-bot": "dist/index.js"
-  },
-  "files": [
-    "dist"
-  ],
   "scripts": {
-    "build": "tsc && chmod +x dist/index.js",
+    "build": "node scripts/build.mjs",
+    "build:bundle": "node scripts/build.mjs",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "lint": "tsc --noEmit",
@@ -33,9 +26,6 @@
     "type": "git",
     "url": "git+https://github.com/Shailesh-714/git-autocommiter.git"
   },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
-  },
   "engines": {
     "node": ">=20"
   },
@@ -53,6 +43,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "^0.28.1",
     "prettier": "^3.3.3",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",

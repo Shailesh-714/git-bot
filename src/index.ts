@@ -2,7 +2,8 @@
 
 process.noDeprecation = true;
 
-import { createRequire } from 'node:module';
+declare const PKG_VERSION: string;
+
 import { Command, OptionValues } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -18,8 +19,6 @@ import {
 } from './git.js';
 import { generateBranchName, generateCommitMessage } from './graph.js';
 import { GenerationError, GitBotError } from './types.js';
-
-const pkg = createRequire(import.meta.url)('../package.json');
 
 interface GlobalOptions extends OptionValues {
   config?: string;
@@ -211,7 +210,7 @@ async function run(action: () => Promise<void>): Promise<void> {
 const program = new Command()
   .name('git-bot')
   .description('git-bot: an LLM-powered CLI assistant for conventional commits and branch names.')
-  .version(pkg.version)
+  .version(typeof PKG_VERSION !== 'undefined' ? PKG_VERSION : '0.0.0')
   .option('--config <path>', 'Path to config TOML')
   .option('-v, --verbose', 'Show additional debug output')
   .configureHelp({ sortSubcommands: true });
