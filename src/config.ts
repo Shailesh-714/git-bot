@@ -4,25 +4,11 @@ import path from 'node:path';
 import { z } from 'zod';
 import * as TOML from 'smol-toml';
 
-const DEFAULT_COMMIT_TYPES = [
-  'feat',
-  'fix',
-  'refactor',
-  'docs',
-  'test',
-  'chore',
-  'style',
-  'perf',
-];
+const DEFAULT_COMMIT_TYPES = ['feat', 'fix', 'refactor', 'docs', 'test', 'chore', 'style', 'perf'];
 
 const DEFAULT_BRANCH_PREFIXES = ['feature', 'bugfix', 'hotfix', 'release'];
 
-export const DEFAULT_CONFIG_PATH = path.join(
-  os.homedir(),
-  '.config',
-  'git-bot',
-  'config.toml',
-);
+export const DEFAULT_CONFIG_PATH = path.join(os.homedir(), '.config', 'git-bot', 'config.toml');
 
 const llmConfigSchema = z.object({
   provider: z.literal('openai').default('openai'),
@@ -39,9 +25,7 @@ const commitConventionsSchema = z.object({
 });
 
 const branchConventionsSchema = z.object({
-  enabledPrefixes: z
-    .array(z.string())
-    .default(() => [...DEFAULT_BRANCH_PREFIXES]),
+  enabledPrefixes: z.array(z.string()).default(() => [...DEFAULT_BRANCH_PREFIXES]),
   separator: z.string().default('/'),
   maxLength: z.number().positive().default(60),
 });

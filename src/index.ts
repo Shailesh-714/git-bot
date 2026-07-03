@@ -9,15 +9,8 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { confirm } from '@inquirer/prompts';
 import { configToToml, loadConfig, writeExampleConfig } from './config.js';
-import {
-  checkoutOrCreateBranch,
-  commit,
-  getDiff,
-  isDirty,
-  openRepo,
-  stageAll,
-} from './git.js';
-import { generateBranchName, generateCommitMessage } from './graph.js';
+import { checkoutOrCreateBranch, commit, getDiff, isDirty, openRepo, stageAll } from './git.js';
+import { generateCommitAndBranch, generateBranchName, generateCommitMessage } from './graph.js';
 import { GenerationError, GitBotError } from './types.js';
 
 interface GlobalOptions extends OptionValues {
@@ -78,29 +71,32 @@ async function commitAction(options: RepoOptions, command: Command): Promise<voi
     console.log(chalk.dim(`Using ${diffResult.source} changes...`));
   }
 
-  const commitSpinner = ora('Generating commit message...').start();
   let message: string;
-  try {
-    message = await generateCommitMessage(diffResult.diff, config);
-    commitSpinner.succeed('Commit message generated');
-  } catch (error) {
-    commitSpinner.fail('Failed to generate commit message');
-    throw error;
-  }
-
-  printBlock('Generated Commit Message', message);
-
   let branchName: string | undefined;
+
   if (options.branch) {
-    const branchSpinner = ora('Generating branch name...').start();
+    const combinedSpinner = ora('Generating commit message and branch name...').start();
     try {
-      branchName = await generateBranchName(diffResult.diff, config, options.issue);
-      branchSpinner.succeed('Branch name generated');
+      const result = await generateCommitAndBranch(diffResult.diff, config, options.issue);
+      message = result.commitMessage;
+      branchName = result.branchName;
+      combinedSpinner.succeed('Commit message and branch name generated');
     } catch (error) {
-      branchSpinner.fail('Failed to generate branch name');
+      combinedSpinner.fail('Failed to generate commit message and branch name');
       throw error;
     }
+    printBlock('Generated Commit Message', message);
     printBlock('Generated Branch Name', branchName, 'cyan');
+  } else {
+    const commitSpinner = ora('Generating commit message...').start();
+    try {
+      message = await generateCommitMessage(diffResult.diff, config);
+      commitSpinner.succeed('Commit message generated');
+    } catch (error) {
+      commitSpinner.fail('Failed to generate commit message');
+      throw error;
+    }
+    printBlock('Generated Commit Message', message);
   }
 
   if (options.dryRun) {
@@ -175,10 +171,7 @@ async function branchAction(options: RepoOptions, command: Command): Promise<voi
   console.log(chalk.green(`Switched to branch ${branchName}.`));
 }
 
-async function configAction(
-  options: { init?: boolean },
-  command: Command,
-): Promise<void> {
+async function configAction(options: { init?: boolean }, command: Command): Promise<void> {
   const globals = command.optsWithGlobals<GlobalOptions>();
 
   if (options.init) {

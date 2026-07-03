@@ -49,10 +49,7 @@ async function collectUntrackedFiles(git: SimpleGit): Promise<string> {
   return chunks.join('\n');
 }
 
-async function buildUntrackedChunk(
-  fullPath: string,
-  filePath: string,
-): Promise<string> {
+async function buildUntrackedChunk(fullPath: string, filePath: string): Promise<string> {
   try {
     const stats = await fs.stat(fullPath);
     if (!stats.isFile()) {
@@ -93,13 +90,10 @@ export async function commit(git: SimpleGit, message: string): Promise<void> {
     await git.commit(message);
   } catch (error) {
     const stderr = String(error).toLowerCase();
-    if (
-      stderr.includes('author identity unknown') ||
-      stderr.includes('empty ident name')
-    ) {
+    if (stderr.includes('author identity unknown') || stderr.includes('empty ident name')) {
       throw new GitBotError(
         'Git author identity is not configured.\n' +
-          "Run the following commands and try again:\n\n" +
+          'Run the following commands and try again:\n\n' +
           "  git config --global user.name 'Your Name'\n" +
           "  git config --global user.email 'your.email@example.com'",
       );
@@ -110,10 +104,7 @@ export async function commit(git: SimpleGit, message: string): Promise<void> {
   }
 }
 
-export async function checkoutOrCreateBranch(
-  git: SimpleGit,
-  branchName: string,
-): Promise<void> {
+export async function checkoutOrCreateBranch(git: SimpleGit, branchName: string): Promise<void> {
   const branches = await git.branchLocal();
   if (branches.all.includes(branchName)) {
     throw new GitBotError(`Branch '${branchName}' already exists.`);

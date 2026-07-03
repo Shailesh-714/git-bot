@@ -1,6 +1,6 @@
 {
   "name": "@shailesh-714/git-bot",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "git-bot: an LLM-powered CLI assistant for conventional commits and branch names.",
   "type": "module",
   "main": "bundle/git-bot.cjs",

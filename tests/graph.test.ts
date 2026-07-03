@@ -8,7 +8,11 @@ vi.mock('@langchain/openai', () => ({
   ChatOpenAI,
 }));
 
-import { generateBranchName, generateCommitMessage } from '../src/graph.js';
+import {
+  generateBranchName,
+  generateCommitAndBranch,
+  generateCommitMessage,
+} from '../src/graph.js';
 
 function makeConfig(): Config {
   return {
@@ -128,5 +132,72 @@ describe('generation graph', () => {
       GenerationError,
     );
     expect(ChatOpenAI.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it('generates a commit message and branch name in a single call', async () => {
+    ChatOpenAI.mockImplementation(() => ({
+      withStructuredOutput: () => ({
+        invoke: async () => ({
+          parsed: {
+            type: 'feat',
+            summary: 'add login form',
+            prefix: 'feature',
+            name: 'login-flow',
+          },
+        }),
+      }),
+    }));
+
+    const result = await generateCommitAndBranch('some diff', makeConfig());
+    expect(result.commitMessage).toBe('feat: add login form');
+    expect(result.branchName).toBe('feature/login-flow');
+  });
+
+  it('appends the issue identifier to the combined branch name', async () => {
+    ChatOpenAI.mockImplementation(() => ({
+      withStructuredOutput: () => ({
+        invoke: async () => ({
+          parsed: {
+            type: 'fix',
+            summary: 'resolve auth bug',
+            prefix: 'bugfix',
+            name: 'auth-token',
+          },
+        }),
+      }),
+    }));
+
+    const result = await generateCommitAndBranch('some diff', makeConfig(), 'PROJ-42');
+    expect(result.commitMessage).toBe('fix: resolve auth bug');
+    expect(result.branchName).toBe('bugfix/auth-token-PROJ-42');
+  });
+
+  it('retries combined generation when the commit type is invalid', async () => {
+    let calls = 0;
+    ChatOpenAI.mockImplementation(() => ({
+      withStructuredOutput: () => ({
+        invoke: async () => {
+          calls += 1;
+          if (calls === 1) {
+            return {
+              parsed: {
+                type: 'chore',
+                summary: 'update deps',
+                prefix: 'feature',
+                name: 'deps-update',
+              },
+            };
+          }
+          return {
+            parsed: { type: 'feat', summary: 'add auth', prefix: 'feature', name: 'auth-flow' },
+          };
+        },
+      }),
+    }));
+
+    const result = await generateCommitAndBranch('some diff', makeConfig());
+    expect(result.commitMessage).toBe('feat: add auth');
+    expect(result.branchName).toBe('feature/auth-flow');
+    expect(calls).toBeGreaterThan(1);
   });
 });

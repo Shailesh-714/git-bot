@@ -27,3 +27,8 @@ export interface BranchResult {
   prefix: string;
   name: string;
 }
+
+export interface CommitAndBranch {
+  commitMessage: string;
+  branchName: string;
+}

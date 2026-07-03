@@ -90,8 +90,6 @@ describe('git helpers', () => {
   it('throws when a branch already exists', async () => {
     const git = openRepo(repoPath);
     await checkoutOrCreateBranch(git, 'feature/new-stuff');
-    await expect(checkoutOrCreateBranch(git, 'feature/new-stuff')).rejects.toThrow(
-      GitBotError,
-    );
+    await expect(checkoutOrCreateBranch(git, 'feature/new-stuff')).rejects.toThrow(GitBotError);
   });
 });
