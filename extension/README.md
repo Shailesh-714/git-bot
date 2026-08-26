@@ -10,6 +10,7 @@ This is the VS Code companion to the [`@shailesh-714/git-bot`](https://www.npmjs
 - **Generate and Create Branch** — generates a branch name like `feature/add-login-flow` from your current changes, lets you edit it, then creates and checks out the branch.
 - **Generate Commit Message and Branch** — both of the above in one step: creates the branch, then fills the commit input box.
 - **Set OpenAI API Key** — stores your API key in VS Code secret storage (never in plaintext settings).
+- **(Auto Approve) variants** — each generate command has a command-palette twin that skips confirmations: the commit is created immediately and branches are checked out without the review prompt, like the CLI's `-y` flag.
 
 ## Setup
 

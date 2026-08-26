@@ -1,6 +1,12 @@
 import * as vscode from 'vscode';
 import { loadConfig, type Config } from '../../src/config.js';
-import { checkoutOrCreateBranch, getDiff, openRepo } from '../../src/git.js';
+import {
+  checkoutOrCreateBranch,
+  commit as gitCommit,
+  getDiff,
+  openRepo,
+  stageAll,
+} from '../../src/git.js';
 import {
   generateBranchName,
   generateCommitAndBranch,
@@ -17,11 +23,22 @@ export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
   context.subscriptions.push(
     vscode.commands.registerCommand('gitBot.generateCommitMessage', () =>
-      runCommand(commitMessageCommand),
+      runCommand(() => commitMessageCommand(false)),
     ),
-    vscode.commands.registerCommand('gitBot.generateBranch', () => runCommand(branchCommand)),
+    vscode.commands.registerCommand('gitBot.generateCommitMessageAuto', () =>
+      runCommand(() => commitMessageCommand(true)),
+    ),
+    vscode.commands.registerCommand('gitBot.generateBranch', () =>
+      runCommand(() => branchCommand(false)),
+    ),
+    vscode.commands.registerCommand('gitBot.generateBranchAuto', () =>
+      runCommand(() => branchCommand(true)),
+    ),
     vscode.commands.registerCommand('gitBot.generateCommitAndBranch', () =>
-      runCommand(commitAndBranchCommand),
+      runCommand(() => commitAndBranchCommand(false)),
+    ),
+    vscode.commands.registerCommand('gitBot.generateCommitAndBranchAuto', () =>
+      runCommand(() => commitAndBranchCommand(true)),
     ),
     vscode.commands.registerCommand('gitBot.setApiKey', () => setApiKey()),
   );
@@ -43,7 +60,20 @@ async function runCommand(command: () => Promise<void>): Promise<void> {
 
 class UserCancelledError extends Error {}
 
-async function commitMessageCommand(): Promise<void> {
+async function commitDirectly(
+  repo: Repository,
+  diffSource: DiffResult['source'],
+  message: string,
+): Promise<void> {
+  const git = openRepo(repo.rootUri.fsPath);
+  if (diffSource === 'unstaged') {
+    await stageAll(git);
+  }
+  await gitCommit(git, message);
+  void vscode.window.showInformationMessage(`Git Bot: committed '${message}'.`);
+}
+
+async function commitMessageCommand(autoApprove: boolean): Promise<void> {
   const repo = await pickRepository();
   const diff = await requireDiff(repo);
   const config = await resolveConfig();
@@ -52,11 +82,16 @@ async function commitMessageCommand(): Promise<void> {
     generateCommitMessage(diff.diff, config),
   );
 
+  if (autoApprove) {
+    await commitDirectly(repo, diff.source, message);
+    return;
+  }
+
   repo.inputBox.value = message;
   await vscode.commands.executeCommand('workbench.view.scm');
 }
 
-async function branchCommand(): Promise<void> {
+async function branchCommand(autoApprove: boolean): Promise<void> {
   const repo = await pickRepository();
   const git = openRepo(repo.rootUri.fsPath);
   let diff = await getDiff(git);
@@ -69,12 +104,12 @@ async function branchCommand(): Promise<void> {
     generateBranchName(diff.diff, config),
   );
 
-  const branchName = await confirmBranchName(generated);
+  const branchName = autoApprove ? generated : await confirmBranchName(generated);
   await checkoutOrCreateBranch(git, branchName);
   void vscode.window.showInformationMessage(`Git Bot: switched to branch '${branchName}'.`);
 }
 
-async function commitAndBranchCommand(): Promise<void> {
+async function commitAndBranchCommand(autoApprove: boolean): Promise<void> {
   const repo = await pickRepository();
   const git = openRepo(repo.rootUri.fsPath);
   const diff = await requireDiff(repo);
@@ -84,8 +119,14 @@ async function commitAndBranchCommand(): Promise<void> {
     generateCommitAndBranch(diff.diff, config),
   );
 
-  const branchName = await confirmBranchName(result.branchName);
+  const branchName = autoApprove ? result.branchName : await confirmBranchName(result.branchName);
   await checkoutOrCreateBranch(git, branchName);
+
+  if (autoApprove) {
+    await commitDirectly(repo, diff.source, result.commitMessage);
+    void vscode.window.showInformationMessage(`Git Bot: switched to branch '${branchName}'.`);
+    return;
+  }
 
   repo.inputBox.value = result.commitMessage;
   await vscode.commands.executeCommand('workbench.view.scm');
