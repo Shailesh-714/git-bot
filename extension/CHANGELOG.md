@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+
+- Add "(Auto Approve)" command variants that skip confirmations: commit generated messages immediately and create branches without the review prompt (CLI `-y` equivalent).
+
 ## 0.2.1
 
 - Add marketplace icon.

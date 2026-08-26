@@ -147,11 +147,14 @@ This project uses [npm trusted publishing](https://docs.npmjs.com/trusted-publis
 
 ### Publishing
 
-1. Bump the version in `package.json`.
+1. Bump the version in the root `package.json` — the single source of truth. The
+   VS Code extension version is synced from it automatically (`scripts/sync-version.mjs`).
 2. Push the change to `main`.
 3. Go to **Actions → Release → Run workflow**.
 
-The workflow will tag the release, build and test the package, publish it to the public npm registry with provenance, and create a GitHub Release.
+The workflow will tag the release, build and test the package, publish it to the public
+npm registry with provenance, create a GitHub Release, and then publish the VS Code
+extension to the Visual Studio Marketplace (via Entra ID federation, no tokens stored).
 
 ## License
 

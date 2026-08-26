@@ -2,7 +2,7 @@
   "name": "git-bot",
   "displayName": "Git Bot",
   "description": "LLM-powered conventional commit messages and branch names, generated straight into the Source Control view.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "Shailesh",
   "icon": "icon.png",
   "license": "MIT",
@@ -40,13 +40,28 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "gitBot.generateCommitMessageAuto",
+        "title": "Generate Commit Message and Commit (Auto Approve)",
+        "category": "Git Bot"
+      },
+      {
         "command": "gitBot.generateBranch",
         "title": "Generate and Create Branch",
         "category": "Git Bot"
       },
       {
+        "command": "gitBot.generateBranchAuto",
+        "title": "Generate and Create Branch (Auto Approve)",
+        "category": "Git Bot"
+      },
+      {
         "command": "gitBot.generateCommitAndBranch",
         "title": "Generate Commit Message and Branch",
+        "category": "Git Bot"
+      },
+      {
+        "command": "gitBot.generateCommitAndBranchAuto",
+        "title": "Generate Commit Message and Branch (Auto Approve)",
         "category": "Git Bot"
       },
       {
@@ -92,7 +107,7 @@
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
     "vscode:prepublish": "node esbuild.mjs --production",
-    "package": "vsce package"
+    "package": "node ../scripts/sync-version.mjs && vsce package"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0",
