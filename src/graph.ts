@@ -1,6 +1,5 @@
-import { ChatOpenAI } from '@langchain/openai';
-import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
-import { BaseMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
+import OpenAI from 'openai';
+import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 import type { Config } from './config.js';
 import {
@@ -19,12 +18,12 @@ const MAX_GENERATION_ATTEMPTS = 3;
 
 type GenerationMode = 'commit' | 'branch' | 'combined';
 
-function buildLLM(config: Config) {
-  return new ChatOpenAI({
-    model: config.llm.model,
+type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
+
+function buildClient(config: Config): OpenAI {
+  return new OpenAI({
     apiKey: config.llm.apiKey,
-    configuration: config.llm.baseUrl ? { baseURL: config.llm.baseUrl } : undefined,
-    temperature: config.llm.temperature,
+    baseURL: config.llm.baseUrl || undefined,
   });
 }
 
@@ -84,42 +83,6 @@ function buildCombinedSchema(config: Config) {
       .string()
       .describe('Kebab-case descriptive name after the prefix, lowercase words separated by "-".'),
   });
-}
-
-type StructuredModelResult<T> = { parsed: T } | { lengthError: true };
-
-async function invokeStructuredModel<T>(
-  schema: z.ZodType<T>,
-  messages: BaseMessage[],
-  config: Config,
-): Promise<StructuredModelResult<T>> {
-  const model = buildLLM(config).withStructuredOutput(schema, { includeRaw: true });
-
-  try {
-    const response = (await model.invoke(messages)) as {
-      parsed?: T;
-      parsing_error?: Error;
-      raw: BaseMessage;
-    };
-
-    if (response.parsed) {
-      return { parsed: response.parsed };
-    }
-
-    const parseError = response.parsing_error;
-    if (isLengthError(parseError) || isLengthError(response.raw)) {
-      return { lengthError: true };
-    }
-
-    const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
-    throw new Error(errorMessage);
-  } catch (error) {
-    if (isLengthError(error)) {
-      return { lengthError: true };
-    }
-    // Transient errors (network, rate limits) are thrown so LangGraph's retry policy can catch them.
-    throw error;
-  }
 }
 
 function formatCommitMessage(parsed: CommitResult, config: Config): string {
@@ -190,181 +153,141 @@ function formatCommitAndBranch(
 }
 
 // ---------------------------------------------------------------------------
-// Unified generation graph
+// Generation loop
 // ---------------------------------------------------------------------------
 
-const GenerationState = Annotation.Root({
-  config: Annotation<Config>(),
-  mode: Annotation<GenerationMode>(),
-  diff: Annotation<string>(),
-  issue: Annotation<string>(),
-  diffBudgetChars: Annotation<number>(),
-  preparedDiff: Annotation<string>(),
-  messages: Annotation<BaseMessage[]>(),
-  commitMessage: Annotation<string>(),
-  branchName: Annotation<string>(),
-  feedback: Annotation<string>(),
-  attempts: Annotation<number>(),
-});
+const RESPONSE_FORMAT_NAMES: Record<GenerationMode, string> = {
+  commit: 'commit_message',
+  branch: 'branch_name',
+  combined: 'commit_and_branch',
+};
 
-async function prepareGeneration(state: typeof GenerationState.State) {
-  const prepared = trimDiff(state.diff, state.diffBudgetChars);
-  const { mode, config, issue, feedback } = state;
-
-  let messages: BaseMessage[];
+function buildMessages(
+  mode: GenerationMode,
+  preparedDiff: string,
+  config: Config,
+  issue?: string,
+  feedback?: string,
+): ChatMessage[] {
   if (mode === 'commit') {
-    messages = [
-      new SystemMessage(buildCommitSystemPrompt()),
-      new HumanMessage(buildCommitUserPrompt(prepared, config, feedback)),
-    ];
-  } else if (mode === 'branch') {
-    messages = [
-      new SystemMessage(buildBranchSystemPrompt()),
-      new HumanMessage(buildBranchUserPrompt(prepared, config, issue, feedback)),
-    ];
-  } else {
-    messages = [
-      new SystemMessage(buildCombinedSystemPrompt()),
-      new HumanMessage(buildCombinedUserPrompt(prepared, config, issue, feedback)),
+    return [
+      { role: 'system', content: buildCommitSystemPrompt() },
+      { role: 'user', content: buildCommitUserPrompt(preparedDiff, config, feedback) },
     ];
   }
-
-  return { preparedDiff: prepared, messages };
-}
-
-async function generateGeneration(state: typeof GenerationState.State) {
-  const { config, mode, messages } = state;
-
-  if (mode === 'commit') {
-    const result = await invokeStructuredModel(buildCommitSchema(config), messages, config);
-    if ('lengthError' in result) {
-      return reduceDiffBudget(state);
-    }
-    return finalizeCommit(state, result.parsed);
-  }
-
   if (mode === 'branch') {
-    const result = await invokeStructuredModel(buildBranchSchema(config), messages, config);
-    if ('lengthError' in result) {
-      return reduceDiffBudget(state);
+    return [
+      { role: 'system', content: buildBranchSystemPrompt() },
+      { role: 'user', content: buildBranchUserPrompt(preparedDiff, config, issue, feedback) },
+    ];
+  }
+  return [
+    { role: 'system', content: buildCombinedSystemPrompt() },
+    { role: 'user', content: buildCombinedUserPrompt(preparedDiff, config, issue, feedback) },
+  ];
+}
+
+type ModelResult = { content: string } | { lengthError: true };
+
+async function invokeModel(
+  client: OpenAI,
+  config: Config,
+  mode: GenerationMode,
+  schema: z.AnyZodObject,
+  messages: ChatMessage[],
+): Promise<ModelResult> {
+  let completion: OpenAI.Chat.Completions.ChatCompletion;
+  try {
+    // Transient errors (network, rate limits) are retried by the SDK itself.
+    completion = await client.chat.completions.create({
+      model: config.llm.model ?? 'gpt-4o-mini',
+      temperature: config.llm.temperature,
+      messages,
+      response_format: zodResponseFormat(schema, RESPONSE_FORMAT_NAMES[mode]),
+    });
+  } catch (error) {
+    if (isLengthError(error)) {
+      return { lengthError: true };
     }
-    return finalizeBranch(state, result.parsed);
+    throw error;
   }
 
-  const result = await invokeStructuredModel(buildCombinedSchema(config), messages, config);
-  if ('lengthError' in result) {
-    return reduceDiffBudget(state);
+  const choice = completion.choices[0];
+  if (!choice) {
+    throw new GenerationError('Model returned no choices.');
   }
-  return finalizeCombined(state, result.parsed);
+  if (choice.finish_reason === 'length') {
+    return { lengthError: true };
+  }
+  if (choice.message.refusal) {
+    throw new GenerationError(`Model refused to respond: ${choice.message.refusal}`);
+  }
+  return { content: choice.message.content ?? '' };
 }
 
-function finalizeCommit(state: typeof GenerationState.State, parsed: CommitResult) {
+function parseContent<T>(content: string, schema: z.ZodType<T>): { value: T } | { error: string } {
+  let json: unknown;
   try {
-    const commitMessage = formatCommitMessage(parsed, state.config);
-    return { commitMessage, feedback: undefined };
-  } catch (error) {
-    return validationFeedback(state, error instanceof Error ? error.message : String(error));
+    json = JSON.parse(content);
+  } catch {
+    return { error: `model returned invalid JSON: ${content.slice(0, 200)}` };
+  }
+  const parsed = schema.safeParse(json);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+      .join('; ');
+    return { error: `model output failed validation: ${issues}` };
+  }
+  return { value: parsed.data };
+}
+
+async function runGeneration<TSchema extends z.AnyZodObject, TOut>(
+  config: Config,
+  mode: GenerationMode,
+  diff: string,
+  issue: string | undefined,
+  schema: TSchema,
+  finalize: (parsed: z.infer<TSchema>) => TOut,
+): Promise<TOut> {
+  const client = buildClient(config);
+  let diffBudgetChars = DEFAULT_DIFF_BUDGET_CHARS;
+  let attempts = 0;
+  let feedback: string | undefined;
+
+  while (true) {
+    const messages = buildMessages(mode, trimDiff(diff, diffBudgetChars), config, issue, feedback);
+    let failure: string;
+
+    const result = await invokeModel(client, config, mode, schema, messages);
+    if ('lengthError' in result) {
+      diffBudgetChars = Math.max(MIN_DIFF_BUDGET_CHARS, Math.floor(diffBudgetChars * 0.75));
+      failure = `The diff context was too long for the model. Retrying with a shorter context (${diffBudgetChars} characters).`;
+    } else {
+      const parsed = parseContent(result.content, schema);
+      if ('error' in parsed) {
+        failure = parsed.error;
+      } else {
+        try {
+          return finalize(parsed.value as z.infer<TSchema>);
+        } catch (error) {
+          failure = error instanceof Error ? error.message : String(error);
+        }
+      }
+    }
+
+    attempts += 1;
+    feedback = failure;
+    if (attempts >= MAX_GENERATION_ATTEMPTS) {
+      throw new GenerationError(failure);
+    }
   }
 }
-
-function finalizeBranch(state: typeof GenerationState.State, parsed: BranchResult) {
-  try {
-    const branchName = formatBranchName(parsed, state.config, state.issue);
-    return { branchName, feedback: undefined };
-  } catch (error) {
-    return validationFeedback(state, error instanceof Error ? error.message : String(error));
-  }
-}
-
-function finalizeCombined(
-  state: typeof GenerationState.State,
-  parsed: CommitResult & BranchResult,
-) {
-  try {
-    const { commitMessage, branchName } = formatCommitAndBranch(parsed, state.config, state.issue);
-    return { commitMessage, branchName, feedback: undefined };
-  } catch (error) {
-    return validationFeedback(state, error instanceof Error ? error.message : String(error));
-  }
-}
-
-async function finalizeGeneration(state: typeof GenerationState.State) {
-  return {
-    commitMessage: state.commitMessage,
-    branchName: state.branchName,
-  };
-}
-
-async function failGeneration(state: typeof GenerationState.State) {
-  throw new GenerationError(
-    state.feedback ||
-      `Failed to generate a valid ${state.mode} result after ${MAX_GENERATION_ATTEMPTS} attempts.`,
-  );
-}
-
-function reduceDiffBudget(state: typeof GenerationState.State) {
-  const newBudget = Math.max(MIN_DIFF_BUDGET_CHARS, Math.floor(state.diffBudgetChars * 0.75));
-  return {
-    diffBudgetChars: newBudget,
-    attempts: state.attempts + 1,
-    feedback: `The diff context was too long for the model. Retrying with a shorter context (${newBudget} characters).`,
-  };
-}
-
-function validationFeedback(state: typeof GenerationState.State, message: string) {
-  return {
-    feedback: message,
-    attempts: state.attempts + 1,
-  };
-}
-
-function routeAfterGeneration(
-  state: typeof GenerationState.State,
-): 'finalize' | 'fail' | 'prepare' {
-  if (state.mode === 'commit' && state.commitMessage) {
-    return 'finalize';
-  }
-  if (state.mode === 'branch' && state.branchName) {
-    return 'finalize';
-  }
-  if (state.mode === 'combined' && state.commitMessage && state.branchName) {
-    return 'finalize';
-  }
-  if (state.attempts >= MAX_GENERATION_ATTEMPTS) {
-    return 'fail';
-  }
-  return 'prepare';
-}
-
-const generationGraph = new StateGraph(GenerationState)
-  .addNode('prepare', prepareGeneration)
-  .addNode('generate', generateGeneration, { retryPolicy: { maxAttempts: 3 } })
-  .addNode('finalize', finalizeGeneration)
-  .addNode('fail', failGeneration)
-  .addEdge(START, 'prepare')
-  .addEdge('prepare', 'generate')
-  .addConditionalEdges('generate', routeAfterGeneration, {
-    finalize: 'finalize',
-    fail: 'fail',
-    prepare: 'prepare',
-  })
-  .addEdge('finalize', END)
-  .compile();
 
 export async function generateCommitMessage(diff: string, config: Config): Promise<string> {
-  const result = await generationGraph.invoke({
-    diff,
-    config,
-    mode: 'commit',
-    issue: '',
-    messages: [],
-    attempts: 0,
-    diffBudgetChars: DEFAULT_DIFF_BUDGET_CHARS,
-  });
-  if (!result.commitMessage) {
-    throw new GenerationError('Commit generation returned no message.');
-  }
-  return result.commitMessage;
+  return runGeneration(config, 'commit', diff, undefined, buildCommitSchema(config), (parsed) =>
+    formatCommitMessage(parsed, config),
+  );
 }
 
 export async function generateBranchName(
@@ -372,19 +295,9 @@ export async function generateBranchName(
   config: Config,
   issue?: string,
 ): Promise<string> {
-  const result = await generationGraph.invoke({
-    diff,
-    config,
-    mode: 'branch',
-    issue,
-    messages: [],
-    attempts: 0,
-    diffBudgetChars: DEFAULT_DIFF_BUDGET_CHARS,
-  });
-  if (!result.branchName) {
-    throw new GenerationError('Branch generation returned no name.');
-  }
-  return result.branchName;
+  return runGeneration(config, 'branch', diff, issue, buildBranchSchema(config), (parsed) =>
+    formatBranchName(parsed, config, issue),
+  );
 }
 
 export async function generateCommitAndBranch(
@@ -392,20 +305,7 @@ export async function generateCommitAndBranch(
   config: Config,
   issue?: string,
 ): Promise<CommitAndBranch> {
-  const result = await generationGraph.invoke({
-    diff,
-    config,
-    mode: 'combined',
-    issue,
-    messages: [],
-    attempts: 0,
-    diffBudgetChars: DEFAULT_DIFF_BUDGET_CHARS,
-  });
-  if (!result.commitMessage || !result.branchName) {
-    throw new GenerationError('Combined generation returned incomplete results.');
-  }
-  return {
-    commitMessage: result.commitMessage,
-    branchName: result.branchName,
-  };
+  return runGeneration(config, 'combined', diff, issue, buildCombinedSchema(config), (parsed) =>
+    formatCommitAndBranch(parsed, config, issue),
+  );
 }

@@ -1,0 +1,100 @@
+{
+  "name": "git-bot",
+  "displayName": "Git Bot",
+  "description": "LLM-powered conventional commit messages and branch names, generated straight into the Source Control view.",
+  "version": "0.1.0",
+  "publisher": "shailesh-714",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Shailesh-714/git-bot.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "git",
+    "commit",
+    "branch",
+    "llm",
+    "conventional-commits"
+  ],
+  "main": "./dist/extension.js",
+  "extensionDependencies": [
+    "vscode.git"
+  ],
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "gitBot.generateCommitMessage",
+        "title": "Generate Commit Message",
+        "category": "Git Bot",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "gitBot.generateBranch",
+        "title": "Generate and Create Branch",
+        "category": "Git Bot"
+      },
+      {
+        "command": "gitBot.generateCommitAndBranch",
+        "title": "Generate Commit Message and Branch",
+        "category": "Git Bot"
+      },
+      {
+        "command": "gitBot.setApiKey",
+        "title": "Set OpenAI API Key",
+        "category": "Git Bot"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "gitBot.generateCommitMessage",
+          "when": "scmProvider == git",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Git Bot",
+      "properties": {
+        "gitBot.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model to use for generation. Empty uses the git-bot config file value or gpt-4o-mini."
+        },
+        "gitBot.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional OpenAI-compatible endpoint base URL. Empty uses the git-bot config file value."
+        },
+        "gitBot.temperature": {
+          "type": "number",
+          "default": -1,
+          "minimum": -1,
+          "maximum": 2,
+          "description": "Sampling temperature (0-2). -1 uses the git-bot config file value."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "vscode:prepublish": "node esbuild.mjs --production",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.0.0"
+  }
+}

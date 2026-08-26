@@ -11,7 +11,7 @@ configurable conventions, and can also create a matching branch name when you st
 - **Branch naming**: generates branch names with allowed prefixes like `feature/`, `bugfix/`, etc.
 - **Staged-first diff reading**: prefers staged changes and falls back to unstaged changes.
 - **Combined workflow**: create a branch and commit in a single command.
-- **LangGraph-powered generation**: structured LLM output with node-level retry policies and soft context restrictions.
+- **Structured generation**: schema-constrained LLM output with validation-feedback retries and automatic diff trimming for large changes.
 - **Configurable rules**: customize commit types, branch prefixes, length limits, and credentials via TOML.
 
 ## Installation

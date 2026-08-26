@@ -6,6 +6,7 @@ node_modules/
 dist/
 bundle/
 *.tsbuildinfo
+*.vsix
 
 # Environment
 .env
@@ -19,7 +20,9 @@ logs/
 coverage/
 
 # IDE
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
 .idea/
 *.swp
 *.swo

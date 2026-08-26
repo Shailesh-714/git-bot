@@ -29,8 +29,7 @@
     "commit",
     "branch",
     "llm",
-    "conventional-commits",
-    "langgraph"
+    "conventional-commits"
   ],
   "author": "Shailesh-714",
   "license": "MIT",
@@ -43,11 +42,9 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^7.0.0",
-    "@langchain/core": "^0.3.0",
-    "@langchain/langgraph": "^0.2.0",
-    "@langchain/openai": "^0.3.0",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
+    "openai": "^7.5.0",
     "ora": "^8.1.0",
     "simple-git": "^3.27.0",
     "smol-toml": "^1.3.1",
