@@ -9,7 +9,15 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { confirm } from '@inquirer/prompts';
 import { configToToml, loadConfig, writeExampleConfig } from './config.js';
-import { checkoutOrCreateBranch, commit, getDiff, isDirty, openRepo, stageAll } from './git.js';
+import {
+  checkoutOrCreateBranch,
+  commit,
+  getDiff,
+  isDirty,
+  openRepo,
+  pushCurrentBranch,
+  stageAll,
+} from './git.js';
 import { generateCommitAndBranch, generateBranchName, generateCommitMessage } from './graph.js';
 import { GenerationError, GitBotError } from './types.js';
 
@@ -23,6 +31,7 @@ interface RepoOptions extends OptionValues {
   dryRun?: boolean;
   yes?: boolean;
   issue?: string;
+  push?: boolean;
 }
 
 function printBlock(title: string, content: string, color: keyof typeof chalk = 'green') {
@@ -127,6 +136,11 @@ async function commitAction(options: RepoOptions, command: Command): Promise<voi
 
   await commit(git, message);
   console.log(chalk.green('Committed successfully.'));
+
+  if (options.push) {
+    const pushed = await pushCurrentBranch(git);
+    console.log(chalk.green(`Pushed '${pushed}' to origin.`));
+  }
 }
 
 async function branchAction(options: RepoOptions, command: Command): Promise<void> {
@@ -169,6 +183,11 @@ async function branchAction(options: RepoOptions, command: Command): Promise<voi
 
   await checkoutOrCreateBranch(git, branchName);
   console.log(chalk.green(`Switched to branch ${branchName}.`));
+
+  if (options.push) {
+    const pushed = await pushCurrentBranch(git);
+    console.log(chalk.green(`Pushed '${pushed}' to origin.`));
+  }
 }
 
 async function configAction(options: { init?: boolean }, command: Command): Promise<void> {
@@ -217,6 +236,7 @@ program
   .option('--issue <id>', 'Issue/ticket identifier to include in the branch name')
   .option('--repo <path>', 'Path to the git repository')
   .option('-y, --yes', 'Skip confirmation prompts')
+  .option('-p, --push', 'Push to origin after committing')
   .action((options, command) => run(() => commitAction(options as RepoOptions, command)));
 
 program
@@ -226,6 +246,7 @@ program
   .option('--issue <id>', 'Issue/ticket identifier to include in the branch name')
   .option('--repo <path>', 'Path to the git repository')
   .option('-y, --yes', 'Skip confirmation prompts')
+  .option('-p, --push', 'Push the new branch to origin after creating it')
   .action((options, command) => run(() => branchAction(options as RepoOptions, command)));
 
 program

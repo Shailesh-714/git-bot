@@ -112,6 +112,22 @@ export async function checkoutOrCreateBranch(git: SimpleGit, branchName: string)
   await git.checkoutLocalBranch(branchName);
 }
 
+export async function pushCurrentBranch(git: SimpleGit): Promise<string> {
+  const branches = await git.branchLocal();
+  const current = branches.current;
+  if (!current) {
+    throw new GitBotError('No branch is currently checked out.');
+  }
+  try {
+    await git.push(['-u', 'origin', current]);
+  } catch (error) {
+    throw new GitBotError(
+      `Failed to push branch '${current}': ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return current;
+}
+
 export async function isDirty(git: SimpleGit): Promise<boolean> {
   const status = await git.status();
   return status.files.length > 0;

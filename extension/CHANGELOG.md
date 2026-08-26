@@ -3,6 +3,8 @@
 ## 0.2.2
 
 - Add "(Auto Approve)" command variants that skip confirmations: commit generated messages immediately and create branches without the review prompt (CLI `-y` equivalent).
+- Success notifications now offer a **Push** button that pushes the current branch to origin.
+- Add "(Auto Approve + Push)" command variants that also push to origin automatically (CLI `-y --push` equivalent).
 
 ## 0.2.1
 

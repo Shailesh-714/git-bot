@@ -11,6 +11,8 @@ This is the VS Code companion to the [`@shailesh-714/git-bot`](https://www.npmjs
 - **Generate Commit Message and Branch** — both of the above in one step: creates the branch, then fills the commit input box.
 - **Set OpenAI API Key** — stores your API key in VS Code secret storage (never in plaintext settings).
 - **(Auto Approve) variants** — each generate command has a command-palette twin that skips confirmations: the commit is created immediately and branches are checked out without the review prompt, like the CLI's `-y` flag.
+- **One-click push** — after a commit or branch is created, the success notification offers a **Push** button that pushes the current branch to origin (setting the upstream).
+- **(Auto Approve + Push) variants** — each auto command also has a "…and Push" twin that pushes to origin automatically at the end, fully hands-off (like the CLI's `-y --push`).
 
 ## Setup
 

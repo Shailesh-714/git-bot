@@ -5,6 +5,7 @@ import {
   commit as gitCommit,
   getDiff,
   openRepo,
+  pushCurrentBranch,
   stageAll,
 } from '../../src/git.js';
 import {
@@ -28,17 +29,26 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('gitBot.generateCommitMessageAuto', () =>
       runCommand(() => commitMessageCommand(true)),
     ),
+    vscode.commands.registerCommand('gitBot.generateCommitMessageAutoPush', () =>
+      runCommand(() => commitMessageCommand(true, true)),
+    ),
     vscode.commands.registerCommand('gitBot.generateBranch', () =>
       runCommand(() => branchCommand(false)),
     ),
     vscode.commands.registerCommand('gitBot.generateBranchAuto', () =>
       runCommand(() => branchCommand(true)),
     ),
+    vscode.commands.registerCommand('gitBot.generateBranchAutoPush', () =>
+      runCommand(() => branchCommand(true, true)),
+    ),
     vscode.commands.registerCommand('gitBot.generateCommitAndBranch', () =>
       runCommand(() => commitAndBranchCommand(false)),
     ),
     vscode.commands.registerCommand('gitBot.generateCommitAndBranchAuto', () =>
       runCommand(() => commitAndBranchCommand(true)),
+    ),
+    vscode.commands.registerCommand('gitBot.generateCommitAndBranchAutoPush', () =>
+      runCommand(() => commitAndBranchCommand(true, true)),
     ),
     vscode.commands.registerCommand('gitBot.setApiKey', () => setApiKey()),
   );
@@ -70,10 +80,28 @@ async function commitDirectly(
     await stageAll(git);
   }
   await gitCommit(git, message);
-  void vscode.window.showInformationMessage(`Git Bot: committed '${message}'.`);
 }
 
-async function commitMessageCommand(autoApprove: boolean): Promise<void> {
+function pushWithProgress(repo: Repository): Thenable<string> {
+  const git = openRepo(repo.rootUri.fsPath);
+  return vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: 'Git Bot: Pushing to origin…' },
+    () => pushCurrentBranch(git),
+  );
+}
+
+// Success toast with a Push action: pushes the current branch to origin
+// (setting the upstream) when clicked.
+async function notifyWithPush(repo: Repository, message: string): Promise<void> {
+  const choice = await vscode.window.showInformationMessage(message, 'Push');
+  if (choice !== 'Push') {
+    return;
+  }
+  const pushed = await pushWithProgress(repo);
+  void vscode.window.showInformationMessage(`Git Bot: pushed '${pushed}' to origin.`);
+}
+
+async function commitMessageCommand(autoApprove: boolean, autoPush = false): Promise<void> {
   const repo = await pickRepository();
   const diff = await requireDiff(repo);
   const config = await resolveConfig();
@@ -84,6 +112,14 @@ async function commitMessageCommand(autoApprove: boolean): Promise<void> {
 
   if (autoApprove) {
     await commitDirectly(repo, diff.source, message);
+    if (autoPush) {
+      const pushed = await pushWithProgress(repo);
+      void vscode.window.showInformationMessage(
+        `Git Bot: committed '${message}' and pushed '${pushed}' to origin.`,
+      );
+      return;
+    }
+    await notifyWithPush(repo, `Git Bot: committed '${message}'.`);
     return;
   }
 
@@ -91,7 +127,7 @@ async function commitMessageCommand(autoApprove: boolean): Promise<void> {
   await vscode.commands.executeCommand('workbench.view.scm');
 }
 
-async function branchCommand(autoApprove: boolean): Promise<void> {
+async function branchCommand(autoApprove: boolean, autoPush = false): Promise<void> {
   const repo = await pickRepository();
   const git = openRepo(repo.rootUri.fsPath);
   let diff = await getDiff(git);
@@ -106,10 +142,17 @@ async function branchCommand(autoApprove: boolean): Promise<void> {
 
   const branchName = autoApprove ? generated : await confirmBranchName(generated);
   await checkoutOrCreateBranch(git, branchName);
-  void vscode.window.showInformationMessage(`Git Bot: switched to branch '${branchName}'.`);
+  if (autoPush) {
+    await pushWithProgress(repo);
+    void vscode.window.showInformationMessage(
+      `Git Bot: switched to branch '${branchName}' and pushed it to origin.`,
+    );
+    return;
+  }
+  await notifyWithPush(repo, `Git Bot: switched to branch '${branchName}'.`);
 }
 
-async function commitAndBranchCommand(autoApprove: boolean): Promise<void> {
+async function commitAndBranchCommand(autoApprove: boolean, autoPush = false): Promise<void> {
   const repo = await pickRepository();
   const git = openRepo(repo.rootUri.fsPath);
   const diff = await requireDiff(repo);
@@ -124,7 +167,17 @@ async function commitAndBranchCommand(autoApprove: boolean): Promise<void> {
 
   if (autoApprove) {
     await commitDirectly(repo, diff.source, result.commitMessage);
-    void vscode.window.showInformationMessage(`Git Bot: switched to branch '${branchName}'.`);
+    if (autoPush) {
+      await pushWithProgress(repo);
+      void vscode.window.showInformationMessage(
+        `Git Bot: switched to branch '${branchName}', committed '${result.commitMessage}', and pushed to origin.`,
+      );
+      return;
+    }
+    await notifyWithPush(
+      repo,
+      `Git Bot: switched to branch '${branchName}' and committed '${result.commitMessage}'.`,
+    );
     return;
   }
 

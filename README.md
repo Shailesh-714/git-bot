@@ -115,6 +115,12 @@ git-bot branch
 
 # Dry-run branch name only
 git-bot branch --dry-run
+
+# Commit and push to origin in one go
+git-bot commit -y --push
+
+# Create the branch and publish it to origin
+git-bot branch -y --push
 ```
 
 ## Environment Variables

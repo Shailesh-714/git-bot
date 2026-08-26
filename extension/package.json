@@ -45,6 +45,11 @@
         "category": "Git Bot"
       },
       {
+        "command": "gitBot.generateCommitMessageAutoPush",
+        "title": "Generate Commit Message, Commit and Push (Auto Approve)",
+        "category": "Git Bot"
+      },
+      {
         "command": "gitBot.generateBranch",
         "title": "Generate and Create Branch",
         "category": "Git Bot"
@@ -55,6 +60,11 @@
         "category": "Git Bot"
       },
       {
+        "command": "gitBot.generateBranchAutoPush",
+        "title": "Generate, Create and Push Branch (Auto Approve)",
+        "category": "Git Bot"
+      },
+      {
         "command": "gitBot.generateCommitAndBranch",
         "title": "Generate Commit Message and Branch",
         "category": "Git Bot"
@@ -62,6 +72,11 @@
       {
         "command": "gitBot.generateCommitAndBranchAuto",
         "title": "Generate Commit Message and Branch (Auto Approve)",
+        "category": "Git Bot"
+      },
+      {
+        "command": "gitBot.generateCommitAndBranchAutoPush",
+        "title": "Generate Commit Message and Branch, Commit and Push (Auto Approve)",
         "category": "Git Bot"
       },
       {
