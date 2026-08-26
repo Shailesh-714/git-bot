@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- Add marketplace icon.
+
 ## 0.2.0
 
 Initial release.
