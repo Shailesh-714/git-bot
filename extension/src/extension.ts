@@ -7,6 +7,7 @@ import {
   openRepo,
   pushCurrentBranch,
   stageAll,
+  type PushOutcome,
 } from '../../src/git.js';
 import {
   generateBranchName,
@@ -20,7 +21,6 @@ import {
   isGhAvailable,
   openInBrowser,
   parseRemote,
-  prCreationUrl,
 } from '../../src/pr.js';
 import type { DiffResult } from '../../src/types.js';
 import type { GitExtension, Repository } from './vscode-git.js';
@@ -91,7 +91,7 @@ async function commitDirectly(
   await gitCommit(git, message);
 }
 
-function pushWithProgress(repo: Repository): Thenable<string> {
+function pushWithProgress(repo: Repository): Thenable<PushOutcome> {
   const git = openRepo(repo.rootUri.fsPath);
   return vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: 'Git Bot: Pushing to origin…' },
@@ -107,7 +107,7 @@ async function notifyWithPush(repo: Repository, config: Config, message: string)
     return;
   }
   const pushed = await pushWithProgress(repo);
-  void vscode.window.showInformationMessage(`Git Bot: pushed '${pushed}' to origin.`);
+  void vscode.window.showInformationMessage(`Git Bot: pushed '${pushed.branch}' to origin.`);
   await handlePullRequestFlow(repo, config, pushed);
 }
 
@@ -128,18 +128,19 @@ async function showPrCreated(prUrl: string, redirect: boolean): Promise<void> {
 async function handlePullRequestFlow(
   repo: Repository,
   config: Config,
-  branch: string,
+  pushed: PushOutcome,
 ): Promise<void> {
   const { autoCreate, redirectToCreation } = config.pr;
   if (!autoCreate && !redirectToCreation) {
     return;
   }
 
+  const branch = pushed.branch;
   const git = openRepo(repo.rootUri.fsPath);
-  const remoteUrl = await getOriginUrl(git);
-  const remote = remoteUrl ? parseRemote(remoteUrl, config.pr.provider) : undefined;
 
   if (autoCreate) {
+    const remoteUrl = await getOriginUrl(git);
+    const remote = remoteUrl ? parseRemote(remoteUrl, config.pr.provider) : undefined;
     if (remote?.provider === 'bitbucket-server') {
       const token =
         config.pr.bitbucketToken ||
@@ -191,14 +192,11 @@ async function handlePullRequestFlow(
     }
   }
 
-  if (!remote) {
-    void vscode.window.showWarningMessage(
-      'Git Bot: could not determine a PR creation URL from the origin remote.',
-    );
-    return;
+  // The server only prints a PR-creation link when a new branch is published;
+  // an already-published branch has nothing to redirect to.
+  if (pushed.prUrl) {
+    await openInBrowser(pushed.prUrl);
   }
-
-  await openInBrowser(prCreationUrl(remote, branch));
 }
 
 async function commitMessageCommand(autoApprove: boolean, autoPush = false): Promise<void> {
@@ -215,7 +213,7 @@ async function commitMessageCommand(autoApprove: boolean, autoPush = false): Pro
     if (autoPush) {
       const pushed = await pushWithProgress(repo);
       void vscode.window.showInformationMessage(
-        `Git Bot: committed '${message}' and pushed '${pushed}' to origin.`,
+        `Git Bot: committed '${message}' and pushed '${pushed.branch}' to origin.`,
       );
       await handlePullRequestFlow(repo, config, pushed);
       return;

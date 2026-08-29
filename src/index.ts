@@ -27,7 +27,6 @@ import {
   isGhAvailable,
   openInBrowser,
   parseRemote,
-  prCreationUrl,
 } from './pr.js';
 import { GenerationError, GitBotError } from './types.js';
 import type { SimpleGit } from 'simple-git';
@@ -78,16 +77,16 @@ async function handlePullRequestFlow(
   config: Config,
   branch: string,
   repoPath: string,
+  pushPrUrl?: string,
 ): Promise<void> {
   const { autoCreate, redirectToCreation } = config.pr;
   if (!autoCreate && !redirectToCreation) {
     return;
   }
 
-  const remoteUrl = await getOriginUrl(git);
-  const remote = remoteUrl ? parseRemote(remoteUrl, config.pr.provider) : undefined;
-
   if (autoCreate) {
+    const remoteUrl = await getOriginUrl(git);
+    const remote = remoteUrl ? parseRemote(remoteUrl, config.pr.provider) : undefined;
     if (remote?.provider === 'bitbucket-server') {
       const token =
         config.pr.bitbucketToken ||
@@ -139,16 +138,13 @@ async function handlePullRequestFlow(
     }
   }
 
-  if (!remote) {
-    console.log(
-      chalk.yellow('Could not determine a PR creation URL from the origin remote; skipping.'),
-    );
+  if (!pushPrUrl) {
+    // The server only prints a PR-creation link when a new branch is published;
+    // an already-published branch has nothing to redirect to.
     return;
   }
-
-  const url = prCreationUrl(remote, branch);
-  await openInBrowser(url);
-  console.log(chalk.green(`Opened PR creation page: ${url}`));
+  await openInBrowser(pushPrUrl);
+  console.log(chalk.green(`Opened PR creation page: ${pushPrUrl}`));
 }
 
 async function commitAction(options: RepoOptions, command: Command): Promise<void> {
@@ -228,9 +224,9 @@ async function commitAction(options: RepoOptions, command: Command): Promise<voi
 
   if (options.push) {
     const pushed = await pushCurrentBranch(git);
-    console.log(chalk.green(`Pushed '${pushed}' to origin.`));
+    console.log(chalk.green(`Pushed '${pushed.branch}' to origin.`));
     const repoPath = options.repo ? path.resolve(options.repo) : process.cwd();
-    await handlePullRequestFlow(git, config, pushed, repoPath);
+    await handlePullRequestFlow(git, config, pushed.branch, repoPath, pushed.prUrl);
   }
 }
 
@@ -277,9 +273,9 @@ async function branchAction(options: RepoOptions, command: Command): Promise<voi
 
   if (options.push) {
     const pushed = await pushCurrentBranch(git);
-    console.log(chalk.green(`Pushed '${pushed}' to origin.`));
+    console.log(chalk.green(`Pushed '${pushed.branch}' to origin.`));
     const repoPath = options.repo ? path.resolve(options.repo) : process.cwd();
-    await handlePullRequestFlow(git, config, pushed, repoPath);
+    await handlePullRequestFlow(git, config, pushed.branch, repoPath, pushed.prUrl);
   }
 }
 

@@ -112,20 +112,44 @@ export async function checkoutOrCreateBranch(git: SimpleGit, branchName: string)
   await git.checkoutLocalBranch(branchName);
 }
 
-export async function pushCurrentBranch(git: SimpleGit): Promise<string> {
+export interface PushOutcome {
+  branch: string;
+  /** PR-creation link printed by the server in the push output, when present. */
+  prUrl?: string;
+}
+
+export async function pushCurrentBranch(git: SimpleGit): Promise<PushOutcome> {
   const branches = await git.branchLocal();
   const current = branches.current;
   if (!current) {
     throw new GitBotError('No branch is currently checked out.');
   }
   try {
-    await git.push(['-u', 'origin', current]);
+    const result = await git.push(['-u', 'origin', current]);
+    return { branch: current, prUrl: extractPrUrl(result) };
   } catch (error) {
     throw new GitBotError(
       `Failed to push branch '${current}': ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  return current;
+}
+
+// Bitbucket Server, GitHub, and GitLab all print a PR/MR creation link in the
+// remote messages when a new branch is pushed.
+function extractPrUrl(result: unknown): string | undefined {
+  const remoteMessages = (result as { remoteMessages?: { all?: string[]; pullRequestUrl?: string } })
+    .remoteMessages;
+  const parsed = remoteMessages?.pullRequestUrl;
+  if (parsed) {
+    return /^https?:\/\//.test(parsed) ? parsed : `https://${parsed}`;
+  }
+  for (const line of remoteMessages?.all ?? []) {
+    const match = line.match(/https?:\/\/\S+/);
+    if (match && /pull\/new|compare\/commits|pull-requests|merge_requests/.test(match[0])) {
+      return match[0];
+    }
+  }
+  return undefined;
 }
 
 export async function isDirty(git: SimpleGit): Promise<boolean> {

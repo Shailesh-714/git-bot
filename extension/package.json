@@ -2,7 +2,7 @@
   "name": "git-bot",
   "displayName": "Git Bot",
   "description": "LLM-powered conventional commit messages and branch names, generated straight into the Source Control view.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "Shailesh",
   "icon": "icon.png",
   "license": "MIT",
@@ -125,6 +125,7 @@
     "package": "node ../scripts/sync-version.mjs && vsce package"
   },
   "devDependencies": {
+    "@types/node": "^22.20.1",
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^3.0.0"
   }

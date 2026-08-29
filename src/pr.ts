@@ -87,21 +87,23 @@ export function parseRemote(
   return { provider: 'github', webUrl: `${scheme}://${host}/${pathname}` };
 }
 
-export function prCreationUrl(remote: RemoteInfo, branch: string): string {
-  if (remote.provider === 'bitbucket-server') {
-    const source = encodeURIComponent(`refs/heads/${branch}`);
-    return `${remote.webUrl}/projects/${remote.projectKey}/repos/${remote.repoSlug}/pull-requests?create&sourceBranch=${source}`;
+export async function getDefaultBranch(git: SimpleGit): Promise<string | undefined> {
+  try {
+    const ref = await git.raw(['symbolic-ref', 'refs/remotes/origin/HEAD']);
+    const match = ref.trim().match(/^refs\/remotes\/origin\/(.+)$/);
+    if (match) {
+      return match[1];
+    }
+  } catch {
+    // origin/HEAD is not always set locally; fall through to the remote query.
   }
-  return `${remote.webUrl}/compare/${encodeURIComponent(branch)}?expand=1`;
-}
-
-export function buildPrCreationUrl(
-  remoteUrl: string,
-  branch: string,
-  provider: PrProviderSetting = 'auto',
-): string | undefined {
-  const remote = parseRemote(remoteUrl, provider);
-  return remote ? prCreationUrl(remote, branch) : undefined;
+  try {
+    const ref = await git.raw(['ls-remote', '--symref', 'origin', 'HEAD']);
+    const match = ref.match(/^ref:\s+refs\/heads\/(\S+)\s+HEAD/m);
+    return match?.[1];
+  } catch {
+    return undefined;
+  }
 }
 
 export async function isGhAvailable(): Promise<boolean> {
@@ -138,17 +140,19 @@ export async function createBitbucketServerPullRequest(
     Accept: 'application/json',
   };
 
-  let targetRef = 'refs/heads/main';
+  let targetRef: string | undefined;
   try {
     const res = await fetch(`${apiBase}/default-branch`, { headers });
     if (res.ok) {
       const data = (await res.json()) as { id?: string };
-      if (data.id) {
-        targetRef = data.id;
-      }
+      targetRef = data.id;
     }
   } catch {
-    // Keep the fallback target ref; creation below will surface real connectivity errors.
+    // Creation below will surface real connectivity errors.
+  }
+  if (!targetRef) {
+    const defaultBranch = await getDefaultBranch(git);
+    targetRef = defaultBranch ? `refs/heads/${defaultBranch}` : 'refs/heads/main';
   }
 
   const log = await git.log({ maxCount: 1 });

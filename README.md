@@ -89,16 +89,16 @@ autoCreate = false           # create the PR automatically after a push
 bitbucketToken = ""          # Bitbucket Server HTTP access token (or set BITBUCKET_SERVER_TOKEN)
 ```
 
-With `redirectToCreation = true`, git-bot opens the PR creation page for the pushed branch (the GitHub compare page, or the Bitbucket Server pull-request page).
+With `redirectToCreation = true`, git-bot opens the PR-creation link that the server prints in the push output (GitHub, Bitbucket Server, and GitLab all print one when a new branch is published). Since that link only appears when publishing a new branch, nothing opens on subsequent pushes.
 
 With `autoCreate = true`:
 
 - **GitHub** — runs `gh pr create --fill` (requires the GitHub CLI).
 - **Bitbucket Server** — calls the REST API directly using an HTTP access token from `bitbucketToken` or the `BITBUCKET_SERVER_TOKEN` env var. The PR targets the repository's default branch, titled from the latest commit.
 
-If auto-creation fails (missing `gh`, missing token, API error), git-bot falls back to opening the PR creation page.
+If auto-creation fails (missing `gh`, missing token, API error), git-bot falls back to opening the PR-creation link from the push output, when one is available.
 
-`provider = "auto"` recognizes Bitbucket Server remotes by their `/scm/PROJECT/repo.git` HTTPS clone URLs or SSH port 7999. If your remote doesn't match those patterns (e.g. a plain `git@host:proj/repo.git` alias), set `provider = "bitbucket-server"` explicitly.
+`provider = "auto"` recognizes Bitbucket Server remotes by their `/scm/PROJECT/repo.git` HTTPS clone URLs or SSH port 7999. If your remote doesn't match those patterns (e.g. a plain `git@host:proj/repo.git` alias), set `provider = "bitbucket-server"` explicitly. The provider only matters for `autoCreate`; the redirect works for any server that prints a PR link on push.
 
 Generate an example config:
 
