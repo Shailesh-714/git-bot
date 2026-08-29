@@ -13,6 +13,15 @@ import {
   generateCommitAndBranch,
   generateCommitMessage,
 } from '../../src/graph.js';
+import {
+  createBitbucketServerPullRequest,
+  createPullRequest,
+  getOriginUrl,
+  isGhAvailable,
+  openInBrowser,
+  parseRemote,
+  prCreationUrl,
+} from '../../src/pr.js';
 import type { DiffResult } from '../../src/types.js';
 import type { GitExtension, Repository } from './vscode-git.js';
 
@@ -92,13 +101,104 @@ function pushWithProgress(repo: Repository): Thenable<string> {
 
 // Success toast with a Push action: pushes the current branch to origin
 // (setting the upstream) when clicked.
-async function notifyWithPush(repo: Repository, message: string): Promise<void> {
+async function notifyWithPush(repo: Repository, config: Config, message: string): Promise<void> {
   const choice = await vscode.window.showInformationMessage(message, 'Push');
   if (choice !== 'Push') {
     return;
   }
   const pushed = await pushWithProgress(repo);
   void vscode.window.showInformationMessage(`Git Bot: pushed '${pushed}' to origin.`);
+  await handlePullRequestFlow(repo, config, pushed);
+}
+
+async function showPrCreated(prUrl: string, redirect: boolean): Promise<void> {
+  if (redirect) {
+    await openInBrowser(prUrl);
+    return;
+  }
+  const choice = await vscode.window.showInformationMessage(
+    `Git Bot: pull request created: ${prUrl}`,
+    'Open',
+  );
+  if (choice === 'Open') {
+    await openInBrowser(prUrl);
+  }
+}
+
+async function handlePullRequestFlow(
+  repo: Repository,
+  config: Config,
+  branch: string,
+): Promise<void> {
+  const { autoCreate, redirectToCreation } = config.pr;
+  if (!autoCreate && !redirectToCreation) {
+    return;
+  }
+
+  const git = openRepo(repo.rootUri.fsPath);
+  const remoteUrl = await getOriginUrl(git);
+  const remote = remoteUrl ? parseRemote(remoteUrl, config.pr.provider) : undefined;
+
+  if (autoCreate) {
+    if (remote?.provider === 'bitbucket-server') {
+      const token =
+        config.pr.bitbucketToken ||
+        process.env.BITBUCKET_SERVER_TOKEN ||
+        process.env.BITBUCKET_TOKEN;
+      if (token) {
+        try {
+          const prUrl = await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: 'Git Bot: Creating pull request…',
+            },
+            () => createBitbucketServerPullRequest(git, remote, branch, token),
+          );
+          await showPrCreated(prUrl, redirectToCreation);
+          return;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          void vscode.window.showWarningMessage(
+            `Git Bot: ${message} Opening the PR creation page instead.`,
+          );
+        }
+      } else {
+        void vscode.window.showWarningMessage(
+          'Git Bot: no Bitbucket token configured (pr.bitbucketToken or BITBUCKET_SERVER_TOKEN); opening the PR creation page instead.',
+        );
+      }
+    } else if (await isGhAvailable()) {
+      try {
+        const prUrl = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Git Bot: Creating pull request…',
+          },
+          () => createPullRequest(repo.rootUri.fsPath, branch),
+        );
+        await showPrCreated(prUrl, redirectToCreation);
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        void vscode.window.showWarningMessage(
+          `Git Bot: ${message} Opening the PR creation page instead.`,
+        );
+      }
+    } else {
+      void vscode.window.showWarningMessage(
+        "Git Bot: GitHub CLI ('gh') not found; opening the PR creation page instead.",
+      );
+    }
+  }
+
+  if (!remote) {
+    void vscode.window.showWarningMessage(
+      'Git Bot: could not determine a PR creation URL from the origin remote.',
+    );
+    return;
+  }
+
+  await openInBrowser(prCreationUrl(remote, branch));
 }
 
 async function commitMessageCommand(autoApprove: boolean, autoPush = false): Promise<void> {
@@ -117,9 +217,10 @@ async function commitMessageCommand(autoApprove: boolean, autoPush = false): Pro
       void vscode.window.showInformationMessage(
         `Git Bot: committed '${message}' and pushed '${pushed}' to origin.`,
       );
+      await handlePullRequestFlow(repo, config, pushed);
       return;
     }
-    await notifyWithPush(repo, `Git Bot: committed '${message}'.`);
+    await notifyWithPush(repo, config, `Git Bot: committed '${message}'.`);
     return;
   }
 
@@ -143,13 +244,14 @@ async function branchCommand(autoApprove: boolean, autoPush = false): Promise<vo
   const branchName = autoApprove ? generated : await confirmBranchName(generated);
   await checkoutOrCreateBranch(git, branchName);
   if (autoPush) {
-    await pushWithProgress(repo);
+    const pushed = await pushWithProgress(repo);
     void vscode.window.showInformationMessage(
       `Git Bot: switched to branch '${branchName}' and pushed it to origin.`,
     );
+    await handlePullRequestFlow(repo, config, pushed);
     return;
   }
-  await notifyWithPush(repo, `Git Bot: switched to branch '${branchName}'.`);
+  await notifyWithPush(repo, config, `Git Bot: switched to branch '${branchName}'.`);
 }
 
 async function commitAndBranchCommand(autoApprove: boolean, autoPush = false): Promise<void> {
@@ -168,14 +270,16 @@ async function commitAndBranchCommand(autoApprove: boolean, autoPush = false): P
   if (autoApprove) {
     await commitDirectly(repo, diff.source, result.commitMessage);
     if (autoPush) {
-      await pushWithProgress(repo);
+      const pushed = await pushWithProgress(repo);
       void vscode.window.showInformationMessage(
         `Git Bot: switched to branch '${branchName}', committed '${result.commitMessage}', and pushed to origin.`,
       );
+      await handlePullRequestFlow(repo, config, pushed);
       return;
     }
     await notifyWithPush(
       repo,
+      config,
       `Git Bot: switched to branch '${branchName}' and committed '${result.commitMessage}'.`,
     );
     return;
