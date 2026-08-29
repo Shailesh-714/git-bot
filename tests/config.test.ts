@@ -33,6 +33,10 @@ maxLength = 50
 enabledPrefixes = ["feature", "bugfix"]
 separator = "/"
 maxLength = 40
+
+[pr]
+redirectToCreation = true
+autoCreate = true
 `,
     );
 
@@ -42,6 +46,8 @@ maxLength = 40
     expect(config.conventions.commit.enabledTypes).toEqual(['feat', 'fix', 'docs']);
     expect(config.conventions.commit.maxLength).toBe(50);
     expect(config.conventions.branch.enabledPrefixes).toEqual(['feature', 'bugfix']);
+    expect(config.pr.redirectToCreation).toBe(true);
+    expect(config.pr.autoCreate).toBe(true);
   });
 
   it('uses sensible defaults when no config exists', () => {
@@ -51,6 +57,8 @@ maxLength = 40
     expect(config.llm.model).toBe('gpt-4o-mini');
     expect(config.conventions.commit.enabledTypes).toContain('feat');
     expect(config.conventions.branch.enabledPrefixes).toContain('feature');
+    expect(config.pr.redirectToCreation).toBe(false);
+    expect(config.pr.autoCreate).toBe(false);
   });
 
   it('falls back to OPENAI_API_KEY environment variable', () => {
@@ -86,5 +94,7 @@ apiKey = ""
     fs.writeFileSync(roundTripPath, toml);
     const reloaded = loadConfig(roundTripPath);
     expect(reloaded.conventions.commit.maxLength).toBe(config.conventions.commit.maxLength);
+    expect(reloaded.pr.redirectToCreation).toBe(config.pr.redirectToCreation);
+    expect(reloaded.pr.autoCreate).toBe(config.pr.autoCreate);
   });
 });

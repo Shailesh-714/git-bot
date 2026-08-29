@@ -30,6 +30,13 @@ const branchConventionsSchema = z.object({
   maxLength: z.number().positive().default(60),
 });
 
+const prConfigSchema = z.object({
+  provider: z.enum(['auto', 'github', 'bitbucket-server']).default('auto'),
+  redirectToCreation: z.boolean().default(false),
+  autoCreate: z.boolean().default(false),
+  bitbucketToken: z.string().optional(),
+});
+
 const configSchema = z.object({
   llm: llmConfigSchema.default({}),
   conventions: z
@@ -38,6 +45,7 @@ const configSchema = z.object({
       branch: branchConventionsSchema.default({}),
     })
     .default({}),
+  pr: prConfigSchema.default({}),
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -105,6 +113,12 @@ export function exampleConfig(): Config {
         maxLength: 60,
       },
     },
+    pr: {
+      provider: 'auto',
+      redirectToCreation: false,
+      autoCreate: false,
+      bitbucketToken: '',
+    },
   };
 }
 
@@ -126,6 +140,12 @@ export function configToToml(config: Config): string {
     `enabledPrefixes = ${toTomlStringList(config.conventions.branch.enabledPrefixes)}`,
     `separator = "${config.conventions.branch.separator}"`,
     `maxLength = ${config.conventions.branch.maxLength}`,
+    '',
+    '[pr]',
+    `provider = "${config.pr.provider}"`,
+    `redirectToCreation = ${config.pr.redirectToCreation}`,
+    `autoCreate = ${config.pr.autoCreate}`,
+    'bitbucketToken = ""',
   ];
   return `${lines.join('\n')}\n`;
 }

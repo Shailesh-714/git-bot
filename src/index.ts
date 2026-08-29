@@ -4,11 +4,12 @@ process.noDeprecation = true;
 
 declare const PKG_VERSION: string;
 
+import path from 'node:path';
 import { Command, OptionValues } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { confirm } from '@inquirer/prompts';
-import { configToToml, loadConfig, writeExampleConfig } from './config.js';
+import { Config, configToToml, loadConfig, writeExampleConfig } from './config.js';
 import {
   checkoutOrCreateBranch,
   commit,
@@ -19,7 +20,17 @@ import {
   stageAll,
 } from './git.js';
 import { generateCommitAndBranch, generateBranchName, generateCommitMessage } from './graph.js';
+import {
+  createBitbucketServerPullRequest,
+  createPullRequest,
+  getOriginUrl,
+  isGhAvailable,
+  openInBrowser,
+  parseRemote,
+  prCreationUrl,
+} from './pr.js';
 import { GenerationError, GitBotError } from './types.js';
+import type { SimpleGit } from 'simple-git';
 
 interface GlobalOptions extends OptionValues {
   config?: string;
@@ -60,6 +71,84 @@ function requireChanges(hasChanges: boolean, source: string): void {
       process.exit(0);
     }
   }
+}
+
+async function handlePullRequestFlow(
+  git: SimpleGit,
+  config: Config,
+  branch: string,
+  repoPath: string,
+): Promise<void> {
+  const { autoCreate, redirectToCreation } = config.pr;
+  if (!autoCreate && !redirectToCreation) {
+    return;
+  }
+
+  const remoteUrl = await getOriginUrl(git);
+  const remote = remoteUrl ? parseRemote(remoteUrl, config.pr.provider) : undefined;
+
+  if (autoCreate) {
+    if (remote?.provider === 'bitbucket-server') {
+      const token =
+        config.pr.bitbucketToken ||
+        process.env.BITBUCKET_SERVER_TOKEN ||
+        process.env.BITBUCKET_TOKEN;
+      if (token) {
+        const spinner = ora('Creating pull request on Bitbucket Server...').start();
+        try {
+          const prUrl = await createBitbucketServerPullRequest(git, remote, branch, token);
+          spinner.succeed(`Pull request created: ${prUrl}`);
+          if (redirectToCreation && prUrl) {
+            await openInBrowser(prUrl);
+          }
+          return;
+        } catch (error) {
+          spinner.fail('Failed to create pull request');
+          const message = error instanceof Error ? error.message : String(error);
+          console.log(chalk.yellow(message));
+          console.log(chalk.yellow('Falling back to the PR creation page.'));
+        }
+      } else {
+        console.log(
+          chalk.yellow(
+            'No Bitbucket token configured (set pr.bitbucketToken or BITBUCKET_SERVER_TOKEN); falling back to the PR creation page.',
+          ),
+        );
+      }
+    } else if (await isGhAvailable()) {
+      const spinner = ora('Creating pull request...').start();
+      try {
+        const prUrl = await createPullRequest(repoPath, branch);
+        spinner.succeed(`Pull request created: ${prUrl}`);
+        if (redirectToCreation && prUrl) {
+          await openInBrowser(prUrl);
+        }
+        return;
+      } catch (error) {
+        spinner.fail('Failed to create pull request');
+        const message = error instanceof Error ? error.message : String(error);
+        console.log(chalk.yellow(message));
+        console.log(chalk.yellow('Falling back to the PR creation page.'));
+      }
+    } else {
+      console.log(
+        chalk.yellow(
+          "GitHub CLI ('gh') not found; falling back to opening the PR creation page.",
+        ),
+      );
+    }
+  }
+
+  if (!remote) {
+    console.log(
+      chalk.yellow('Could not determine a PR creation URL from the origin remote; skipping.'),
+    );
+    return;
+  }
+
+  const url = prCreationUrl(remote, branch);
+  await openInBrowser(url);
+  console.log(chalk.green(`Opened PR creation page: ${url}`));
 }
 
 async function commitAction(options: RepoOptions, command: Command): Promise<void> {
@@ -140,6 +229,8 @@ async function commitAction(options: RepoOptions, command: Command): Promise<voi
   if (options.push) {
     const pushed = await pushCurrentBranch(git);
     console.log(chalk.green(`Pushed '${pushed}' to origin.`));
+    const repoPath = options.repo ? path.resolve(options.repo) : process.cwd();
+    await handlePullRequestFlow(git, config, pushed, repoPath);
   }
 }
 
@@ -187,6 +278,8 @@ async function branchAction(options: RepoOptions, command: Command): Promise<voi
   if (options.push) {
     const pushed = await pushCurrentBranch(git);
     console.log(chalk.green(`Pushed '${pushed}' to origin.`));
+    const repoPath = options.repo ? path.resolve(options.repo) : process.cwd();
+    await handlePullRequestFlow(git, config, pushed, repoPath);
   }
 }
 
