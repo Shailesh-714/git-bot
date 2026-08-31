@@ -15,10 +15,12 @@ import {
   generateCommitMessage,
 } from '../../src/graph.js';
 import {
+  bitbucketPrCreationUrl,
   createBitbucketServerPullRequest,
   createPullRequest,
   getOriginUrl,
   isGhAvailable,
+  isGitHubPullNewUrl,
   openInBrowser,
   parseRemote,
 } from '../../src/pr.js';
@@ -28,6 +30,7 @@ import type { GitExtension, Repository } from './vscode-git.js';
 const API_KEY_SECRET = 'gitBot.openaiApiKey';
 
 let extensionContext: vscode.ExtensionContext;
+const output = vscode.window.createOutputChannel('Git Bot');
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
@@ -131,16 +134,30 @@ async function handlePullRequestFlow(
   pushed: PushOutcome,
 ): Promise<void> {
   const { autoCreate, redirectToCreation } = config.pr;
+  output.appendLine(`[pr] push remote messages: ${JSON.stringify(pushed.remoteMessages)}`);
+  output.appendLine(`[pr] extracted push link: ${pushed.prUrl ?? '(none)'}`);
+  output.appendLine(`[pr] autoCreate=${autoCreate} redirectToCreation=${redirectToCreation}`);
   if (!autoCreate && !redirectToCreation) {
+    return;
+  }
+
+  // Non-GitHub servers (Bitbucket, GitLab) print the authoritative PR-creation
+  // link in the push output; prefer it over token/API-based creation.
+  if (redirectToCreation && pushed.prUrl && !isGitHubPullNewUrl(pushed.prUrl)) {
+    output.appendLine(`[pr] redirecting to server-printed link: ${pushed.prUrl}`);
+    await openInBrowser(pushed.prUrl);
     return;
   }
 
   const branch = pushed.branch;
   const git = openRepo(repo.rootUri.fsPath);
+  const remoteUrl = await getOriginUrl(git);
+  const remote = remoteUrl ? parseRemote(remoteUrl, config.pr.provider) : undefined;
+  output.appendLine(
+    `[pr] remote: ${remoteUrl ?? '(none)'} -> ${remote ? `${remote.provider} ${remote.webUrl}` : '(unparsed)'}`,
+  );
 
   if (autoCreate) {
-    const remoteUrl = await getOriginUrl(git);
-    const remote = remoteUrl ? parseRemote(remoteUrl, config.pr.provider) : undefined;
     if (remote?.provider === 'bitbucket-server') {
       const token =
         config.pr.bitbucketToken ||
@@ -192,10 +209,12 @@ async function handlePullRequestFlow(
     }
   }
 
-  // The server only prints a PR-creation link when a new branch is published;
-  // an already-published branch has nothing to redirect to.
-  if (pushed.prUrl) {
-    await openInBrowser(pushed.prUrl);
+  // Prefer the server-printed link; construct the Bitbucket creation URL when
+  // the push output carried none (SSH proxies can swallow remote messages).
+  const creationUrl = pushed.prUrl ?? (remote && bitbucketPrCreationUrl(remote, branch));
+  output.appendLine(`[pr] fallback creation URL: ${creationUrl ?? '(none)'}`);
+  if (creationUrl) {
+    await openInBrowser(creationUrl);
   }
 }
 

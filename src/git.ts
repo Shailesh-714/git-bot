@@ -116,6 +116,8 @@ export interface PushOutcome {
   branch: string;
   /** PR-creation link printed by the server in the push output, when present. */
   prUrl?: string;
+  /** Raw remote messages from the push, for diagnostics. */
+  remoteMessages: string[];
 }
 
 export async function pushCurrentBranch(git: SimpleGit): Promise<PushOutcome> {
@@ -126,7 +128,11 @@ export async function pushCurrentBranch(git: SimpleGit): Promise<PushOutcome> {
   }
   try {
     const result = await git.push(['-u', 'origin', current]);
-    return { branch: current, prUrl: extractPrUrl(result) };
+    return {
+      branch: current,
+      prUrl: extractPrUrl(result),
+      remoteMessages: result.remoteMessages?.all ?? [],
+    };
   } catch (error) {
     throw new GitBotError(
       `Failed to push branch '${current}': ${error instanceof Error ? error.message : String(error)}`,
@@ -136,17 +142,28 @@ export async function pushCurrentBranch(git: SimpleGit): Promise<PushOutcome> {
 
 // Bitbucket Server, GitHub, and GitLab all print a PR/MR creation link in the
 // remote messages when a new branch is pushed.
-function extractPrUrl(result: unknown): string | undefined {
+export function extractPrUrl(result: unknown): string | undefined {
   const remoteMessages = (result as { remoteMessages?: { all?: string[]; pullRequestUrl?: string } })
     .remoteMessages;
   const parsed = remoteMessages?.pullRequestUrl;
   if (parsed) {
     return /^https?:\/\//.test(parsed) ? parsed : `https://${parsed}`;
   }
-  for (const line of remoteMessages?.all ?? []) {
+  const lines = remoteMessages?.all ?? [];
+  for (const line of lines) {
     const match = line.match(/https?:\/\/\S+/);
     if (match && /pull\/new|compare\/commits|pull-requests|merge_requests/.test(match[0])) {
       return match[0];
+    }
+  }
+  // Some servers print the link on the line after the announcement, at a path
+  // the keyword check above does not recognize (proxies, context paths).
+  for (let i = 0; i < lines.length; i++) {
+    if (/create\s+(?:a\s+)?(?:pull|merge)\s+request/i.test(lines[i])) {
+      const url = (lines[i].match(/https?:\/\/\S+/) ?? lines[i + 1]?.match(/https?:\/\/\S+/))?.[0];
+      if (url) {
+        return url;
+      }
     }
   }
   return undefined;

@@ -2,7 +2,7 @@
   "name": "git-bot",
   "displayName": "Git Bot",
   "description": "LLM-powered conventional commit messages and branch names, generated straight into the Source Control view.",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "publisher": "Shailesh",
   "icon": "icon.png",
   "license": "MIT",

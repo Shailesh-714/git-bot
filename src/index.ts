@@ -21,10 +21,12 @@ import {
 } from './git.js';
 import { generateCommitAndBranch, generateBranchName, generateCommitMessage } from './graph.js';
 import {
+  bitbucketPrCreationUrl,
   createBitbucketServerPullRequest,
   createPullRequest,
   getOriginUrl,
   isGhAvailable,
+  isGitHubPullNewUrl,
   openInBrowser,
   parseRemote,
 } from './pr.js';
@@ -84,9 +86,18 @@ async function handlePullRequestFlow(
     return;
   }
 
+  // Non-GitHub servers (Bitbucket, GitLab) print the authoritative PR-creation
+  // link in the push output; prefer it over token/API-based creation.
+  if (redirectToCreation && pushPrUrl && !isGitHubPullNewUrl(pushPrUrl)) {
+    await openInBrowser(pushPrUrl);
+    console.log(chalk.green(`Opened PR creation page: ${pushPrUrl}`));
+    return;
+  }
+
+  const remoteUrl = await getOriginUrl(git);
+  const remote = remoteUrl ? parseRemote(remoteUrl, config.pr.provider) : undefined;
+
   if (autoCreate) {
-    const remoteUrl = await getOriginUrl(git);
-    const remote = remoteUrl ? parseRemote(remoteUrl, config.pr.provider) : undefined;
     if (remote?.provider === 'bitbucket-server') {
       const token =
         config.pr.bitbucketToken ||
@@ -138,13 +149,14 @@ async function handlePullRequestFlow(
     }
   }
 
-  if (!pushPrUrl) {
-    // The server only prints a PR-creation link when a new branch is published;
-    // an already-published branch has nothing to redirect to.
+  // Prefer the server-printed link; construct the Bitbucket creation URL when
+  // the push output carried none (SSH proxies can swallow remote messages).
+  const creationUrl = pushPrUrl ?? (remote && bitbucketPrCreationUrl(remote, branch));
+  if (!creationUrl) {
     return;
   }
-  await openInBrowser(pushPrUrl);
-  console.log(chalk.green(`Opened PR creation page: ${pushPrUrl}`));
+  await openInBrowser(creationUrl);
+  console.log(chalk.green(`Opened PR creation page: ${creationUrl}`));
 }
 
 async function commitAction(options: RepoOptions, command: Command): Promise<void> {

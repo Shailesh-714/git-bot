@@ -54,9 +54,12 @@ export function parseRemote(
 
   // Bitbucket Server HTTPS clone URLs look like https://host[/context]/scm/PROJECT/repo.git
   const scmMatch = pathname.match(/^(?:(.+)\/)?scm\/([^/]+)\/([^/]+)$/);
+  // bitbucket.org is Bitbucket Cloud, which has a different API; only treat
+  // self-hosted bitbucket.* hosts as Bitbucket Server.
+  const bitbucketHost = /(^|\.)bitbucket\./i.test(host) && host.toLowerCase() !== 'bitbucket.org';
   const isBitbucket =
     provider === 'bitbucket-server' ||
-    (provider === 'auto' && (Boolean(scmMatch) || port === BITBUCKET_SSH_PORT));
+    (provider === 'auto' && (Boolean(scmMatch) || port === BITBUCKET_SSH_PORT || bitbucketHost));
 
   if (isBitbucket) {
     let contextPath = '';
@@ -76,15 +79,42 @@ export function parseRemote(
     }
     // SSH remotes carry no web port; assume the web UI is on the default https port.
     const webScheme = httpUrl ? scheme : 'https';
+    // Bitbucket Data Center often exposes SSH on a dedicated ssh.* host; the
+    // web UI lives on the same name without that prefix.
+    const webHost = httpUrl ? host : host.replace(/^ssh\./i, '');
     return {
       provider: 'bitbucket-server',
-      webUrl: `${webScheme}://${host}${contextPath}`,
+      webUrl: `${webScheme}://${webHost}${contextPath}`,
       projectKey,
       repoSlug,
     };
   }
 
   return { provider: 'github', webUrl: `${scheme}://${host}/${pathname}` };
+}
+
+/**
+ * GitHub announces new branches with a `.../pull/new/<branch>` link, which the
+ * `gh`-based creation flow supersedes. Any other link printed in the push
+ * output (Bitbucket `pull-requests?create`, GitLab `merge_requests/new`, ...)
+ * is the server telling us exactly where PRs for this repo are created, and
+ * should be preferred over API-based creation.
+ */
+export function isGitHubPullNewUrl(url: string): boolean {
+  return /\/pull\/new\//.test(url);
+}
+
+/**
+ * Bitbucket Server's PR creation page, constructed from the remote. Used when
+ * the push output carries no link (e.g. SSH proxies that swallow remote
+ * messages, or a branch that was already published).
+ */
+export function bitbucketPrCreationUrl(remote: RemoteInfo, branch: string): string | undefined {
+  if (remote.provider !== 'bitbucket-server' || !remote.projectKey || !remote.repoSlug) {
+    return undefined;
+  }
+  const source = encodeURIComponent(`refs/heads/${branch}`);
+  return `${remote.webUrl}/projects/${remote.projectKey.toUpperCase()}/repos/${remote.repoSlug}/pull-requests?create&sourceBranch=${source}`;
 }
 
 export async function getDefaultBranch(git: SimpleGit): Promise<string | undefined> {

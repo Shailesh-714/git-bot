@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.3
+
+- Fix Bitbucket redirect after push: the PR-creation link printed by the server in the push output is now preferred over token/API-based creation.
+- Detect self-hosted `*.bitbucket.*` remotes (including Bitbucket Data Center `ssh.` hosts) as Bitbucket Server, mapping the SSH host to the web UI host.
+- When the push output carries no link, construct the Bitbucket PR-creation URL from the remote and redirect there.
+- Add a "Git Bot" output channel with pull-request flow diagnostics.
+
 ## 0.2.2
 
 - Add "(Auto Approve)" command variants that skip confirmations: commit generated messages immediately and create branches without the review prompt (CLI `-y` equivalent).

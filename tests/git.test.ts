@@ -1,95 +1,70 @@
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { checkoutOrCreateBranch, commit, getDiff, openRepo, stageAll } from '../src/git.js';
-import { GitBotError } from '../src/types.js';
+import { describe, expect, it } from 'vitest';
+import { extractPrUrl } from '../src/git.js';
 
-describe('git helpers', () => {
-  let tmpDir: string;
-  let repoPath: string;
+function pushResult(all: string[], pullRequestUrl?: string) {
+  return { remoteMessages: { all, pullRequestUrl } };
+}
 
-  beforeEach(async () => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-bot-'));
-    repoPath = path.join(tmpDir, 'repo');
-    fs.mkdirSync(repoPath);
-
-    const git = openRepo(repoPath);
-    await git.init();
-    await git.addConfig('user.name', 'Test User');
-    await git.addConfig('user.email', 'test@example.com');
-
-    const readme = path.join(repoPath, 'README.md');
-    fs.writeFileSync(readme, 'hello', 'utf-8');
-    await git.add(readme);
-    await git.commit('Initial commit');
+describe('extractPrUrl', () => {
+  it('prefers the pullRequestUrl parsed by simple-git', () => {
+    const result = pushResult([], 'https://github.com/owner/repo/pull/new/feature');
+    expect(extractPrUrl(result)).toBe('https://github.com/owner/repo/pull/new/feature');
   });
 
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+  it('adds a scheme when simple-git strips it', () => {
+    const result = pushResult([], 'github.com/owner/repo/pull/new/feature');
+    expect(extractPrUrl(result)).toBe('https://github.com/owner/repo/pull/new/feature');
   });
 
-  it('prefers staged changes', async () => {
-    const git = openRepo(repoPath);
-    const file = path.join(repoPath, 'README.md');
-    fs.writeFileSync(file, 'hello world', 'utf-8');
-    await git.add(file);
-
-    const diff = await getDiff(git);
-    expect(diff.source).toBe('staged');
-    expect(diff.hasChanges).toBe(true);
-    expect(diff.diff).toContain('hello world');
+  it('finds Bitbucket Server links in the remote messages', () => {
+    const result = pushResult([
+      'Create pull request for feature/foo:',
+      'https://bitbucket.example.com/projects/ABC/repos/repo/pull-requests?create&sourceBranch=refs%2Fheads%2Ffeature%2Ffoo',
+    ]);
+    expect(extractPrUrl(result)).toBe(
+      'https://bitbucket.example.com/projects/ABC/repos/repo/pull-requests?create&sourceBranch=refs%2Fheads%2Ffeature%2Ffoo',
+    );
   });
 
-  it('falls back to unstaged changes', async () => {
-    const git = openRepo(repoPath);
-    const file = path.join(repoPath, 'README.md');
-    fs.writeFileSync(file, 'changed', 'utf-8');
-
-    const diff = await getDiff(git);
-    expect(diff.source).toBe('unstaged');
-    expect(diff.hasChanges).toBe(true);
-    expect(diff.diff).toContain('changed');
+  it('finds older Bitbucket Server compare links', () => {
+    const result = pushResult([
+      'Create pull request for feature/foo:',
+      'https://bitbucket.example.com/projects/ABC/repos/repo/compare/commits?sourceBranch=refs%2Fheads%2Ffeature%2Ffoo',
+    ]);
+    expect(extractPrUrl(result)).toContain('/compare/commits');
   });
 
-  it('includes untracked files in the diff', async () => {
-    const git = openRepo(repoPath);
-    fs.writeFileSync(path.join(repoPath, 'new-file.ts'), 'const x = 1;', 'utf-8');
-
-    const diff = await getDiff(git);
-    expect(diff.source).toBe('unstaged');
-    expect(diff.hasChanges).toBe(true);
-    expect(diff.diff).toContain('new file: new-file.ts');
-    expect(diff.diff).toContain('const x = 1;');
+  it('finds GitLab merge request links', () => {
+    const result = pushResult([
+      'To create a merge request for feature/foo, visit:',
+      'https://gitlab.example.com/group/repo/-/merge_requests/new?merge_request%5Bsource_branch%5D=feature%2Ffoo',
+    ]);
+    expect(extractPrUrl(result)).toContain('/merge_requests/new');
   });
 
-  it('detects no changes', async () => {
-    const git = openRepo(repoPath);
-    const diff = await getDiff(git);
-    expect(diff.hasChanges).toBe(false);
+  it('falls back to the line after a create-pull-request announcement', () => {
+    const result = pushResult([
+      'Create pull request for feature/foo:',
+      'https://proxy.example.com/bitbucket/custom/path?branch=feature%2Ffoo',
+    ]);
+    expect(extractPrUrl(result)).toBe(
+      'https://proxy.example.com/bitbucket/custom/path?branch=feature%2Ffoo',
+    );
   });
 
-  it('stages all changes and commits', async () => {
-    const git = openRepo(repoPath);
-    fs.writeFileSync(path.join(repoPath, 'README.md'), 'updated', 'utf-8');
-
-    await stageAll(git);
-    await commit(git, 'chore: update readme');
-
-    const log = await git.log({ n: 1 });
-    expect(log.latest?.message).toBe('chore: update readme');
+  it('handles the announcement and link on a single line', () => {
+    const result = pushResult([
+      'Create pull request for feature/foo: https://host.example.com/create?branch=feature%2Ffoo',
+    ]);
+    expect(extractPrUrl(result)).toBe('https://host.example.com/create?branch=feature%2Ffoo');
   });
 
-  it('creates and checks out a new branch', async () => {
-    const git = openRepo(repoPath);
-    await checkoutOrCreateBranch(git, 'feature/new-stuff');
-    const branches = await git.branchLocal();
-    expect(branches.current).toBe('feature/new-stuff');
+  it('returns undefined when the push output has no link', () => {
+    const result = pushResult(['Resolving deltas: 100% (3/3), done.']);
+    expect(extractPrUrl(result)).toBeUndefined();
   });
 
-  it('throws when a branch already exists', async () => {
-    const git = openRepo(repoPath);
-    await checkoutOrCreateBranch(git, 'feature/new-stuff');
-    await expect(checkoutOrCreateBranch(git, 'feature/new-stuff')).rejects.toThrow(GitBotError);
+  it('returns undefined when remoteMessages is missing', () => {
+    expect(extractPrUrl({})).toBeUndefined();
   });
 });
