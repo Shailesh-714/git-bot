@@ -4,6 +4,7 @@ import {
   checkoutOrCreateBranch,
   commit as gitCommit,
   getDiff,
+  listLocalBranches,
   openRepo,
   pushCurrentBranch,
   stageAll,
@@ -264,9 +265,10 @@ async function branchCommand(autoApprove: boolean, autoPush = false): Promise<vo
   }
   const config = await resolveConfig();
 
-  const generated = await withGenerationProgress('Generating branch name…', () =>
-    generateBranchName(diff.diff, config),
-  );
+  const generated = await withGenerationProgress('Generating branch name…', async () => {
+    const existingBranches = await listLocalBranches(git);
+    return generateBranchName(diff.diff, config, undefined, existingBranches);
+  });
 
   const branchName = autoApprove ? generated : await confirmBranchName(generated);
   await checkoutOrCreateBranch(git, branchName);
@@ -287,8 +289,12 @@ async function commitAndBranchCommand(autoApprove: boolean, autoPush = false): P
   const diff = await requireDiff(repo);
   const config = await resolveConfig();
 
-  const result = await withGenerationProgress('Generating commit message and branch name…', () =>
-    generateCommitAndBranch(diff.diff, config),
+  const result = await withGenerationProgress(
+    'Generating commit message and branch name…',
+    async () => {
+      const existingBranches = await listLocalBranches(git);
+      return generateCommitAndBranch(diff.diff, config, undefined, existingBranches);
+    },
   );
 
   const branchName = autoApprove ? result.branchName : await confirmBranchName(result.branchName);

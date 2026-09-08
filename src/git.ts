@@ -104,6 +104,11 @@ export async function commit(git: SimpleGit, message: string): Promise<void> {
   }
 }
 
+export async function listLocalBranches(git: SimpleGit): Promise<string[]> {
+  const branches = await git.branchLocal();
+  return branches.all;
+}
+
 export async function checkoutOrCreateBranch(git: SimpleGit, branchName: string): Promise<void> {
   const branches = await git.branchLocal();
   if (branches.all.includes(branchName)) {

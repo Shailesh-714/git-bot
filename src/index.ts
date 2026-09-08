@@ -15,6 +15,7 @@ import {
   commit,
   getDiff,
   isDirty,
+  listLocalBranches,
   openRepo,
   pushCurrentBranch,
   stageAll,
@@ -191,7 +192,13 @@ async function commitAction(options: RepoOptions, command: Command): Promise<voi
   if (options.branch) {
     const combinedSpinner = ora('Generating commit message and branch name...').start();
     try {
-      const result = await generateCommitAndBranch(diffResult.diff, config, options.issue);
+      const existingBranches = await listLocalBranches(git);
+      const result = await generateCommitAndBranch(
+        diffResult.diff,
+        config,
+        options.issue,
+        existingBranches,
+      );
       message = result.commitMessage;
       branchName = result.branchName;
       combinedSpinner.succeed('Commit message and branch name generated');
@@ -266,7 +273,8 @@ async function branchAction(options: RepoOptions, command: Command): Promise<voi
   const spinner = ora('Generating branch name...').start();
   let branchName: string;
   try {
-    branchName = await generateBranchName(diffResult.diff, config, options.issue);
+    const existingBranches = await listLocalBranches(git);
+    branchName = await generateBranchName(diffResult.diff, config, options.issue, existingBranches);
     spinner.succeed('Branch name generated');
   } catch (error) {
     spinner.fail('Failed to generate branch name');

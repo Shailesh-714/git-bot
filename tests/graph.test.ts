@@ -124,6 +124,31 @@ describe('generation', () => {
     expect(branch).toBe('feature/initial-setup');
   });
 
+  it('retries with feedback when the generated branch name already exists', async () => {
+    createMock
+      .mockResolvedValueOnce(completionWith({ prefix: 'feature', name: 'login-flow' }))
+      .mockResolvedValueOnce(completionWith({ prefix: 'feature', name: 'login-flow-v2' }));
+
+    const branch = await generateBranchName('some diff', makeConfig(), undefined, [
+      'main',
+      'feature/login-flow',
+    ]);
+    expect(branch).toBe('feature/login-flow-v2');
+    expect(createMock).toHaveBeenCalledTimes(2);
+
+    const retryRequest = createMock.mock.calls[1][0];
+    const userMessage = retryRequest.messages.find(
+      (m: { role: string; content: string }) => m.role === 'user',
+    );
+    expect(userMessage.content).toContain("branch 'feature/login-flow' already exists");
+
+    const firstRequest = createMock.mock.calls[0][0];
+    const firstUserMessage = firstRequest.messages.find(
+      (m: { role: string; content: string }) => m.role === 'user',
+    );
+    expect(firstUserMessage.content).toContain('Existing branches: main, feature/login-flow');
+  });
+
   it('shrinks the diff budget when the response is cut off by length', async () => {
     createMock
       .mockResolvedValueOnce(completionWith({}, 'length'))

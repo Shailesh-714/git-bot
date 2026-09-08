@@ -103,7 +103,12 @@ function formatCommitMessage(parsed: CommitResult, config: Config): string {
   return message.length > cfg.maxLength ? message.slice(0, cfg.maxLength).trim() : message;
 }
 
-function formatBranchName(parsed: BranchResult, config: Config, issue?: string): string {
+function formatBranchName(
+  parsed: BranchResult,
+  config: Config,
+  issue?: string,
+  existingBranches?: string[],
+): string {
   const cfg = config.conventions.branch;
   const allowed = new Set(cfg.enabledPrefixes.map((p) => p.toLowerCase()));
   const prefix = parsed.prefix.toLowerCase().trim();
@@ -138,6 +143,12 @@ function formatBranchName(parsed: BranchResult, config: Config, issue?: string):
     branchName = branchName.slice(0, cfg.maxLength).replace(/-$/, '');
   }
 
+  if (existingBranches?.includes(branchName)) {
+    throw new Error(
+      `branch '${branchName}' already exists; choose a different descriptive name`,
+    );
+  }
+
   return branchName;
 }
 
@@ -145,10 +156,11 @@ function formatCommitAndBranch(
   parsed: CommitResult & BranchResult,
   config: Config,
   issue?: string,
+  existingBranches?: string[],
 ): CommitAndBranch {
   return {
     commitMessage: formatCommitMessage(parsed, config),
-    branchName: formatBranchName(parsed, config, issue),
+    branchName: formatBranchName(parsed, config, issue, existingBranches),
   };
 }
 
@@ -168,6 +180,7 @@ function buildMessages(
   config: Config,
   issue?: string,
   feedback?: string,
+  existingBranches?: string[],
 ): ChatMessage[] {
   if (mode === 'commit') {
     return [
@@ -178,12 +191,18 @@ function buildMessages(
   if (mode === 'branch') {
     return [
       { role: 'system', content: buildBranchSystemPrompt() },
-      { role: 'user', content: buildBranchUserPrompt(preparedDiff, config, issue, feedback) },
+      {
+        role: 'user',
+        content: buildBranchUserPrompt(preparedDiff, config, issue, feedback, existingBranches),
+      },
     ];
   }
   return [
     { role: 'system', content: buildCombinedSystemPrompt() },
-    { role: 'user', content: buildCombinedUserPrompt(preparedDiff, config, issue, feedback) },
+    {
+      role: 'user',
+      content: buildCombinedUserPrompt(preparedDiff, config, issue, feedback, existingBranches),
+    },
   ];
 }
 
@@ -249,6 +268,7 @@ async function runGeneration<TSchema extends z.AnyZodObject, TOut>(
   issue: string | undefined,
   schema: TSchema,
   finalize: (parsed: z.infer<TSchema>) => TOut,
+  existingBranches?: string[],
 ): Promise<TOut> {
   const client = buildClient(config);
   let diffBudgetChars = DEFAULT_DIFF_BUDGET_CHARS;
@@ -256,7 +276,14 @@ async function runGeneration<TSchema extends z.AnyZodObject, TOut>(
   let feedback: string | undefined;
 
   while (true) {
-    const messages = buildMessages(mode, trimDiff(diff, diffBudgetChars), config, issue, feedback);
+    const messages = buildMessages(
+      mode,
+      trimDiff(diff, diffBudgetChars),
+      config,
+      issue,
+      feedback,
+      existingBranches,
+    );
     let failure: string;
 
     const result = await invokeModel(client, config, mode, schema, messages);
@@ -294,9 +321,16 @@ export async function generateBranchName(
   diff: string,
   config: Config,
   issue?: string,
+  existingBranches?: string[],
 ): Promise<string> {
-  return runGeneration(config, 'branch', diff, issue, buildBranchSchema(config), (parsed) =>
-    formatBranchName(parsed, config, issue),
+  return runGeneration(
+    config,
+    'branch',
+    diff,
+    issue,
+    buildBranchSchema(config),
+    (parsed) => formatBranchName(parsed, config, issue, existingBranches),
+    existingBranches,
   );
 }
 
@@ -304,8 +338,15 @@ export async function generateCommitAndBranch(
   diff: string,
   config: Config,
   issue?: string,
+  existingBranches?: string[],
 ): Promise<CommitAndBranch> {
-  return runGeneration(config, 'combined', diff, issue, buildCombinedSchema(config), (parsed) =>
-    formatCommitAndBranch(parsed, config, issue),
+  return runGeneration(
+    config,
+    'combined',
+    diff,
+    issue,
+    buildCombinedSchema(config),
+    (parsed) => formatCommitAndBranch(parsed, config, issue, existingBranches),
+    existingBranches,
   );
 }

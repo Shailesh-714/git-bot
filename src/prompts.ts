@@ -38,6 +38,7 @@ export function buildBranchUserPrompt(
   config: Config,
   issue?: string,
   feedback?: string,
+  existingBranches?: string[],
 ): string {
   const branchCfg = config.conventions.branch;
   const allowed = branchCfg.enabledPrefixes.join(', ');
@@ -51,13 +52,22 @@ export function buildBranchUserPrompt(
     `Maximum length: ${branchCfg.maxLength} characters.`,
     'Use kebab-case after the prefix (lowercase words separated by hyphens).',
     `${issueHint}`,
+  ];
+
+  if (existingBranches && existingBranches.length > 0) {
+    parts.push(
+      `The branch name must not already exist. Existing branches: ${existingBranches.join(', ')}`,
+    );
+  }
+
+  parts.push(
     '',
     'Write a branch name for the following git diff.',
     '',
     '```diff',
     diff,
     '```',
-  ];
+  );
 
   if (feedback) {
     parts.push('', `Previous attempt failed validation: ${feedback}`, 'Please fix it.');
@@ -71,6 +81,7 @@ export function buildCombinedUserPrompt(
   config: Config,
   issue?: string,
   feedback?: string,
+  existingBranches?: string[],
 ): string {
   const commitCfg = config.conventions.commit;
   const branchCfg = config.conventions.branch;
@@ -95,11 +106,15 @@ export function buildCombinedUserPrompt(
     `- Maximum length: ${branchCfg.maxLength} characters.`,
     '- Use kebab-case after the prefix (lowercase words separated by hyphens).',
     `${issueHint}`,
-    '',
-    '```diff',
-    diff,
-    '```',
   ];
+
+  if (existingBranches && existingBranches.length > 0) {
+    parts.push(
+      `- The branch name must not already exist. Existing branches: ${existingBranches.join(', ')}`,
+    );
+  }
+
+  parts.push('', '```diff', diff, '```');
 
   if (feedback) {
     parts.push('', `Previous attempt failed validation: ${feedback}`, 'Please fix it.');
