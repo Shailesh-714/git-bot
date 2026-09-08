@@ -86,16 +86,24 @@ async function handlePullRequestFlow(
     return;
   }
 
+  const remoteUrl = await getOriginUrl(git);
+  const remote = remoteUrl ? parseRemote(remoteUrl, config.pr.provider) : undefined;
+
   // Non-GitHub servers (Bitbucket, GitLab) print the authoritative PR-creation
-  // link in the push output; prefer it over token/API-based creation.
-  if (redirectToCreation && pushPrUrl && !isGitHubPullNewUrl(pushPrUrl)) {
+  // link in the push output; prefer it over opening a raw URL when we aren't
+  // going to attempt token/API-based creation first.
+  const hasBitbucketToken =
+    remote?.provider === 'bitbucket-server' &&
+    Boolean(
+      config.pr.bitbucketToken || process.env.BITBUCKET_SERVER_TOKEN || process.env.BITBUCKET_TOKEN,
+    );
+  const willAttemptApiCreate = autoCreate && (hasBitbucketToken || remote?.provider !== 'bitbucket-server');
+
+  if (redirectToCreation && !willAttemptApiCreate && pushPrUrl && !isGitHubPullNewUrl(pushPrUrl)) {
     await openInBrowser(pushPrUrl);
     console.log(chalk.green(`Opened PR creation page: ${pushPrUrl}`));
     return;
   }
-
-  const remoteUrl = await getOriginUrl(git);
-  const remote = remoteUrl ? parseRemote(remoteUrl, config.pr.provider) : undefined;
 
   if (autoCreate) {
     if (remote?.provider === 'bitbucket-server') {
