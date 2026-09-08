@@ -141,14 +141,6 @@ async function handlePullRequestFlow(
     return;
   }
 
-  // Non-GitHub servers (Bitbucket, GitLab) print the authoritative PR-creation
-  // link in the push output; prefer it over token/API-based creation.
-  if (redirectToCreation && pushed.prUrl && !isGitHubPullNewUrl(pushed.prUrl)) {
-    output.appendLine(`[pr] redirecting to server-printed link: ${pushed.prUrl}`);
-    await openInBrowser(pushed.prUrl);
-    return;
-  }
-
   const branch = pushed.branch;
   const git = openRepo(repo.rootUri.fsPath);
   const remoteUrl = await getOriginUrl(git);
@@ -156,6 +148,24 @@ async function handlePullRequestFlow(
   output.appendLine(
     `[pr] remote: ${remoteUrl ?? '(none)'} -> ${remote ? `${remote.provider} ${remote.webUrl}` : '(unparsed)'}`,
   );
+
+  // Non-GitHub servers (Bitbucket, GitLab) print the authoritative PR-creation
+  // link in the push output; prefer it over opening a raw URL only when we
+  // aren't going to attempt token/API-based creation first.
+  const hasBitbucketToken =
+    remote?.provider === 'bitbucket-server' &&
+    Boolean(
+      config.pr.bitbucketToken || process.env.BITBUCKET_SERVER_TOKEN || process.env.BITBUCKET_TOKEN,
+    );
+  const willAttemptApiCreate =
+    autoCreate && (hasBitbucketToken || remote?.provider !== 'bitbucket-server');
+  output.appendLine(`[pr] willAttemptApiCreate=${willAttemptApiCreate}`);
+
+  if (redirectToCreation && !willAttemptApiCreate && pushed.prUrl && !isGitHubPullNewUrl(pushed.prUrl)) {
+    output.appendLine(`[pr] redirecting to server-printed link: ${pushed.prUrl}`);
+    await openInBrowser(pushed.prUrl);
+    return;
+  }
 
   if (autoCreate) {
     if (remote?.provider === 'bitbucket-server') {
